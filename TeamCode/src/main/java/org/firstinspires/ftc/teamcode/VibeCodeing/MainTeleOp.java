@@ -142,6 +142,7 @@ public class MainTeleOp extends OpMode {
         telemetry.addData("RPM Fit", "deg %d, R2 %.3f, %s",
                 regression.getDegreeUsed(), regression.getRSquared(), regression.describeSamples());
         telemetry.addData("Shooter RPM", "%.0f / %.0f", shooter.getRpm(), shooter.getTargetRpm());
+        telemetry.addData("Shooter Recovery Boost", "%.2f", shooter.getBoost());
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
         telemetry.addData("Loop MS", "%.1f", dt * 1000);
         telemetry.update();

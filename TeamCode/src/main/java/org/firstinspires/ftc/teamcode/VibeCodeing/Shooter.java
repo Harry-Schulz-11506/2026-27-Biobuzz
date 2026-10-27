@@ -26,6 +26,16 @@ public class Shooter {
     public static double I_LIMIT_POWER = 0.25;
     public static double NOMINAL_VOLTAGE = 12.0;
 
+    // ---- Recovery boost (extra power when a ball drags the RPM down) ----
+    // When RPM falls more than RECOVERY_DEADBAND_RPM below target, add RECOVERY_KP power per RPM of the
+    // extra drop, plus RECOVERY_KICK_PER_RPM_PER_SEC for how fast it is falling. Capped at RECOVERY_MAX_BOOST.
+    // Turns itself off once back inside the deadband. Set RECOVERY_ENABLED = false to compare.
+    public static boolean RECOVERY_ENABLED = true;
+    public static double RECOVERY_DEADBAND_RPM = 40;
+    public static double RECOVERY_KP = 0.0006;              // extra power per RPM below the deadband
+    public static double RECOVERY_KICK_PER_RPM_PER_SEC = 0.00004; // extra power per RPM/s of falling speed
+    public static double RECOVERY_MAX_BOOST = 0.35;         // max extra power (total still capped at 1.0)
+
     // ---- Geometry ----
     public static double MOTOR_TICKS_PER_REV = 28;
     public static double MOTOR_TEETH = 10;
@@ -50,6 +60,7 @@ public class Shooter {
     private double lastTime = -1;
     private double inBandSince = -1;
     private double lastPower = 0;
+    private double boost = 0;
 
     public void init(HardwareMap hw) {
         motor = hw.get(DcMotorEx.class, "shooter");
@@ -95,6 +106,8 @@ public class Shooter {
     public double getRpm() { return rpm; }
     public double getPower() { return lastPower; }
     public double getVoltage() { return voltage; }
+    /** Extra recovery power currently being added (0 when not recovering). */
+    public double getBoost() { return boost; }
 
     public boolean atSpeed() {
         return targetRpm > 0 && inBandSince >= 0
@@ -119,6 +132,7 @@ public class Shooter {
             lastPower = 0;
             motor.setPower(0);
             inBandSince = -1;
+            boost = 0;
             lastRpm = rpm;
             return;
         }
@@ -126,9 +140,11 @@ public class Shooter {
         double error = targetRpm - rpm;
 
         double derivative = 0;
+        double fallRate = 0; // RPM per second, positive while the flywheel is slowing down
         if (dt > 1e-4) {
             integral += error * dt;
             derivative = (rpm - lastRpm) / dt;
+            fallRate = Math.max(0, -derivative);
         }
         lastRpm = rpm;
 
@@ -140,7 +156,12 @@ public class Shooter {
         }
 
         double feedforward = (kS + kV * targetRpm) * (NOMINAL_VOLTAGE / voltage);
-        double out = feedforward + kP * error + kI * integral - kD * derivative;
+        boost = 0;
+        if (RECOVERY_ENABLED && error > RECOVERY_DEADBAND_RPM) {
+            boost = RECOVERY_KP * (error - RECOVERY_DEADBAND_RPM) + RECOVERY_KICK_PER_RPM_PER_SEC * fallRate;
+            boost = Range.clip(boost, 0, RECOVERY_MAX_BOOST);
+        }
+        double out = feedforward + kP * error + kI * integral - kD * derivative + boost;
         out = Range.clip(out, 0, 1);
 
         lastPower = out;

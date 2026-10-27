@@ -79,6 +79,12 @@ public class Turret extends OpMode {
     public static double MAX_POWER = 0.5;
     public static double TOLERANCE = Math.toRadians(1.0);
 
+    // ---- Driver 2 aim trim (gamepad2 D-pad left/right, D-pad down resets) ----
+    public static double TRIM_RATE_DEG_PER_SEC = 20.0; // how fast the trim moves while the D-pad is held
+    public static double TRIM_MAX_DEG = 30.0;          // trim is limited to +/- this
+    public double trimRad = 0.0;                       // added to the tracked target angle
+    private long lastTrimNanos = 0;
+
     public double targetAngle = 0.0;
     public double turretPower = 0.0;
     public boolean trackingEnabled = false;
@@ -123,6 +129,7 @@ public class Turret extends OpMode {
             telemetry.addLine("Tracking disabled");
             telemetry.addLine("Gamepad2 A: enable tracking");
             telemetry.addLine("Gamepad2 B: disable tracking");
+            telemetry.addLine("Gamepad2 D-pad L/R: aim trim, D-pad down: reset trim");
             if (updateTelemetry) telemetry.update();
         }
     }
@@ -222,7 +229,7 @@ public class Turret extends OpMode {
 
     public void updateTurret(Pose pose, double targetX, double targetY, boolean tracking) {
         this.trackingEnabled = tracking;
-        targetAngle = calculateTarget(pose, targetX, targetY);
+        targetAngle = wrapToTurretRange(calculateTarget(pose, targetX, targetY) + trimRad);
         double currentAngle = getTurretAngle();
         double error = targetAngle - currentAngle;
 
@@ -270,6 +277,14 @@ public class Turret extends OpMode {
             Pose pose = follower.pose();
 
             if (gamepad2 != null) {
+                long nowN = System.nanoTime();
+                double dtTrim = lastTrimNanos == 0 ? 0 : Math.min((nowN - lastTrimNanos) / 1e9, 0.1);
+                lastTrimNanos = nowN;
+                double dir = (gamepad2.dpad_right ? -1 : 0) + (gamepad2.dpad_left ? 1 : 0); // left = CCW (+)
+                trimRad += Math.toRadians(TRIM_RATE_DEG_PER_SEC) * dir * dtTrim;
+                trimRad = Range.clip(trimRad, -Math.toRadians(TRIM_MAX_DEG), Math.toRadians(TRIM_MAX_DEG));
+                if (gamepad2.dpad_down) trimRad = 0;
+
                 boolean a = gamepad2.a;
                 if (a && !previousA) {
                     trackingEnabled = true;
@@ -304,6 +319,7 @@ public class Turret extends OpMode {
                 telemetry.addData("Encoder Ticks", rawTicks);
                 telemetry.addData("Turret Power", "%.3f", turretPower);
                 telemetry.addData("Tracking", trackingEnabled ? "ON" : "OFF");
+                telemetry.addData("Aim Trim (deg)", "%.1f", Math.toDegrees(trimRad));
                 if (updateTelemetry) telemetry.update();
             }
         }
