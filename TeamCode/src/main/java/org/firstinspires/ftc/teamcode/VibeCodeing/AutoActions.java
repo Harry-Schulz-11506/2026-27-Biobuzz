@@ -7,12 +7,13 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 /**
  * Auto-side helpers for the VibeCodeing mechanisms: turret tracking, shooter spin-up + feed,
- * intake and transfer.
+ * intake and transfer, and the flower / stop servos.
  *
  * Nothing in here overrides TeleOp: it drives the same hardware through the same Turret,
  * Shooter and ShooterRegression classes, so the gains and the measured RPM/distance table
@@ -56,10 +57,19 @@ public class AutoActions {
     public static double MAX_AUTO_RPM = 3300;
     public static double AIM_TOLERANCE_DEG = 2.0;
 
+    // ---- Flower / stop servo positions ----
+    // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
+    // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
+    public static double FLOWER_UP = 0.0;
+    public static double FLOWER_DOWN = 0.6;
+    public static double STOP_DOWN = 0.0;
+    public static double STOP_BLOCKING = 0.5;
+
     private final Turret turret = new Turret();
     private final Shooter shooter = new Shooter();
     private final ShooterRegression regression;
     private final DcMotorEx intake, transfer;
+    private final Servo flowerServo, stopServo;
     private final Follower follower;
 
     private static final double STRAIGHT_AHEAD_LOOKAHEAD_IN = 24.0;
@@ -93,6 +103,13 @@ public class AutoActions {
         transfer.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         intake.setPower(0);
         transfer.setPower(0);
+
+        // Servos hold their last position, so start them at their rest state: flower up, stop
+        // blocking, since 0 is the open position.
+        flowerServo = hw.get(Servo.class, "flower");
+        stopServo = hw.get(Servo.class, "stop");
+        flowerServo.setPosition(FLOWER_UP);
+        stopServo.setPosition(STOP_BLOCKING);
 
         // Start on the goal the Turret has selected, and measure the distance to it right away so
         // spinUpForDistance() is right even before the first update().
@@ -278,6 +295,20 @@ public class AutoActions {
     public void transferOut() { transfer.setPower(-TRANSFER_POWER); }
     public void transferStop() { transfer.setPower(0); }
 
+    // ===================== FLOWER / STOP SERVOS =====================
+
+    /** Flower up (position 0). */
+    public void flowerUp() { flowerServo.setPosition(FLOWER_UP); }
+
+    /** Flower down (position 0.6). */
+    public void flowerDown() { flowerServo.setPosition(FLOWER_DOWN); }
+
+    /** Stop servo down (position 0): the open position, artifacts pass through. */
+    public void stopDown() { stopServo.setPosition(STOP_DOWN); }
+
+    /** Stop servo raised (position 0.5): the stopping position, artifacts are held back. */
+    public void stopBlocking() { stopServo.setPosition(STOP_BLOCKING); }
+
     // ===================== TEARDOWN =====================
 
     /** Turret off, flywheel off, intake and transfer off. Call at the end of auto (TeleOp init resets too). */
@@ -303,5 +334,6 @@ public class AutoActions {
         telemetry.addData("Shooter RPM", "%.0f / %.0f", getShooterRpm(), getShooterTargetRpm());
         telemetry.addData("Ready To Shoot", isReadyToShoot());
         telemetry.addData("Feeding", feeding);
+        telemetry.addData("Flower / Stop Servo", "%.2f / %.2f", flowerServo.getPosition(), stopServo.getPosition());
     }
 }

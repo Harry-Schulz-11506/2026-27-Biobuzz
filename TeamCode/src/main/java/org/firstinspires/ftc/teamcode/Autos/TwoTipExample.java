@@ -16,20 +16,34 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
  * EXAMPLE auto: a copy of TwoTip with the mechanism calls added, showing how to drive paths and
  * shoot / transfer / intake with AutoActions.
  *
+ * Here "shoot" means the transfer plus the flywheel and the turret: the RPM comes from the
+ * ShooterRegression fit for the distance the robot is standing at, the same way MainTeleOp does it.
+ * "Intake" means the intake plus the transfer, which is the pairing TeleOp uses too.
+ *
  * Sequence in this example:
  *   1. at the start pose: spin up, wait until ready, shoot and run the transfer
- *   2. path 1
- *   3. end of path 1: intake in + transfer in
- *   4. path 3 (paths 2-3 keep intaking), end of path 3: intake + shoot + transfer
- *   5. paths 4-5 keep the flywheel spinning
- *   6. path 6: intake and transfer WHILE driving
- *   7. path 7, end of path 7: shoot + intake + transfer
- *   8. path 8 (park), then everything off
+ *   2. path 1, then one second of intake (intake + transfer) at the end of it
+ *   3. paths 2-3: the flower servo is down, nothing else runs
+ *   4. path 4: flower down from halfway, then intake + shoot at the end of it
+ *   5. path 5: flower up at the first quarter, then shoot at the end of it
+ *   6. path 6: intake WHILE driving, then nothing running
+ *   7. path 7, then shoot at the end of it
+ *   8. path 8 (park), then the turret goes back to 0 deg and everything off
+ *
+ * The stop servo opens (position 0, down) for each intake window above and goes back to blocking
+ * (0.5) when the window ends, so the artifacts are held in while driving and released while
+ * intaking.
+ *
+ * The flower servo is down (0.6) on paths 2-3, and again from halfway through path 4 to the first
+ * quarter of path 5. It is up (0) the rest of the time, including at INIT.
  *
  * Goal the turret tracks:
- *   RED 2 on paths 1 and 2, and from halfway through path 5 to halfway through path 8
- *   RED 1 everywhere else (opening shot, paths 3, 4, first half of path 5)
- *   straight ahead (0 deg) from halfway through path 8 to the end
+ *   RED 2 on paths 1 and 2, and from halfway through path 5 to the end of the auto
+ *   RED 1 everywhere else (opening shot, paths 3 and 4, and the end-of-path-4 shot)
+ *   straight ahead (0 deg) at the end of path 8
+ *
+ * score() leaves the flywheel target set, so it spins on between shots and only stops in
+ * stopAll() at the end of the auto.
  *
  * Copy this file, rename the class + @Autonomous name, and move the mech.* calls to taste.
  */
@@ -42,6 +56,10 @@ public class TwoTipExample extends LinearOpMode {
     public static long FEED_MS = 1200;
     /** How long to wait for Pedro report a newly started path as busy. */
     public static long PICKUP_TIMEOUT_MS = 500;
+    /** How long the end-of-path-1 intake window runs (intake + transfer). */
+    public static long INTAKE_MS = 1000;
+    /** How long to wait for the turret to reach 0 deg (straight ahead) at the end of the auto. */
+    public static long AIM_TIMEOUT_MS = 1000;
 
     private Follower follower;
     private AutoActions mech;
@@ -87,47 +105,67 @@ public class TwoTipExample extends LinearOpMode {
         stage = "start shot: RED 1";
         score(FEED_MS);
 
-        // ---- 2-3. Path 1 tracking RED 2, then start intaking ----
+        // ---- 2. Path 1 tracking RED 2 ----
         mech.trackGoal(true, false); // RED 2
         stage = "path 1: RED 2";
         drive(path1());
-        stage = "end of path 1: intake + transfer";
-        mech.intakeIn();
-        mech.transferIn();
-        settle(200);
 
-        // ---- 4. Path 2 still RED 2, then path 3 back on RED 1 ----
-        stage = "path 2: RED 2";
+        // ---- 3. End of path 1: one second of intake (stop open), then nothing on ----
+        stage = "end of path 1: intake for 1 s";
+        mech.stopDown(); // open, so the intake can take artifacts in
+        mech.intakeInWithTransfer();
+        settle(INTAKE_MS);
+        mech.intakeStop();
+        mech.transferStop();
+        mech.stopBlocking(); // back to holding the artifacts in
+
+        // ---- 4. Paths 2-3 with the flower down: still RED 2, then back on RED 1 ----
+        mech.flowerDown();
+        stage = "path 2: RED 2, flower down";
         drive(path2());
         mech.trackGoal(true, true); // RED 1
-        stage = "path 3: RED 1";
+        stage = "path 3: RED 1, flower down";
         drive(path3());
-        stage = "end of path 3: intake + shoot + transfer";
-        mech.intakeIn();
+        mech.flowerUp();
+
+        // ---- 5. Path 4 on RED 1, flower down from halfway, then intake + shoot ----
+        stage = "path 4: RED 1, flower down from halfway";
+        drive(path4(), at(0.5, () -> mech.flowerDown()));
+        stage = "end of path 4: intake + shoot: RED 1";
+        mech.stopDown(); // open for the intake, the transfer feeds through it
+        mech.intakeInWithTransfer();
+        score(FEED_MS);
+        mech.intakeStop();
+        mech.transferStop();
+        mech.stopBlocking();
+
+        // ---- 6. Path 5: flower up at the first quarter, RED 2 from halfway, shoot at the end ----
+        stage = "path 5: flower up at 1/4, RED 2 from halfway";
+        drive(path5(), at(0.25, () -> mech.flowerUp()), at(0.5, () -> mech.trackGoal(true, false)));
+        stage = "end of path 5: shoot: RED 2";
         score(FEED_MS);
 
-        // ---- 5. Path 4 on RED 1, path 5 flips to RED 2 halfway ----
-        stage = "path 4: RED 1";
-        drive(path4());
-        stage = "path 5: RED 1, then RED 2 from halfway";
-        drive(path5(), 0.5, () -> mech.trackGoal(true, false));
-
-        // ---- 6. Path 6 tracking RED 2 with intake and transfer running the whole time ----
-        stage = "path 6: RED 2, intake + transfer while driving";
-        mech.intakeIn();
-        mech.transferIn();
+        // ---- 7. Path 6 tracking RED 2 with the intake running the whole way ----
+        stage = "path 6: RED 2, intake while driving";
+        mech.stopDown(); // open for the intake
+        mech.intakeInWithTransfer();
         drive(path6());
+        mech.intakeStop();
+        mech.transferStop();
+        mech.stopBlocking();
 
-        // ---- 7. Path 7 tracking RED 2, then shoot + intake + transfer ----
+        // ---- 8. Path 7 tracking RED 2, then shoot at the end of it ----
         stage = "path 7: RED 2";
         drive(path7());
-        stage = "end of path 7: shoot + intake + transfer";
-        mech.intakeIn();
+        stage = "end of path 7: shoot: RED 2";
         score(FEED_MS);
 
-        // ---- 8. Park on RED 2, then point the turret straight ahead (0 deg) halfway through ----
-        stage = "path 8: RED 2, straight ahead from halfway";
-        drive(path8(), 0.5, () -> mech.aimStraightAhead());
+        // ---- 9. Park on RED 2, then the turret goes back to 0 deg at the end of path 8 ----
+        stage = "path 8: RED 2";
+        drive(path8());
+        stage = "end of path 8: turret to 0 deg";
+        mech.aimStraightAhead();
+        holdAimed(AIM_TIMEOUT_MS);
         mech.stopAll();
         stage = "done";
         loopOnce();
@@ -139,16 +177,28 @@ public class TwoTipExample extends LinearOpMode {
 
     // ===================== HELPERS =====================
 
-    /** Drive one path: Pedro updates and the mechanisms keep running until the path is done. */
-    private void drive(Path path) {
-        drive(path, 2.0, null);
+    /** One scheduled mid-path action: run once when the path passes this completion (0..1). */
+    private static final class At {
+        final double completion;
+        final Runnable action;
+
+        At(double completion, Runnable action) {
+            this.completion = completion;
+            this.action = action;
+        }
+    }
+
+    /** Schedule an action for a point along a path (0 = start, 0.25 = first quarter, 1 = end). */
+    private static At at(double completion, Runnable action) {
+        return new At(completion, action);
     }
 
     /**
-     * Drive one path, running midAction once when the path is midAt complete (0 = start, 0.5 = halfway,
-     * 1 = end). Used to switch the tracked goal partway along a path.
+     * Drive one path: Pedro updates and the mechanisms keep running until the path is done. Every
+     * scheduled action runs once, when the path reaches its completion (0 = start, 0.5 = halfway,
+     * 1 = end); use it to switch the tracked goal or move a servo partway along a path.
      */
-    private void drive(Path path, double midAt, Runnable midAction) {
+    private void drive(Path path, At... actions) {
         follower.follow(path);
 
         // Give the follower one loop (up to PICKUP_TIMEOUT_MS) to report busy, so a path is never skipped.
@@ -157,21 +207,27 @@ public class TwoTipExample extends LinearOpMode {
             loopOnce();
         } while (opModeIsActive() && !follower.isBusy() && System.currentTimeMillis() < pickupDeadline);
 
-        boolean midDone = (midAction == null);
-        boolean seenBelowMid = false; // completion() reads 1.0 before the path is tracked; wait for the start
+        boolean[] done = new boolean[actions.length];
+        boolean[] seenBelow = new boolean[actions.length];
+        // completion() reads 1.0 before the path is tracked: wait to see the path below a trigger
+        // point before firing that action.
         while (opModeIsActive() && follower.isBusy()) {
-            if (!midDone) {
+            for (int i = 0; i < actions.length; i++) {
+                if (done[i]) continue;
                 double completion = follower.completion();
-                if (completion < midAt) {
-                    seenBelowMid = true;
-                } else if (seenBelowMid) {
-                    midAction.run();
-                    midDone = true;
+                if (completion < actions[i].completion) {
+                    seenBelow[i] = true;
+                } else if (seenBelow[i]) {
+                    actions[i].action.run();
+                    done[i] = true;
                 }
             }
             loopOnce();
         }
-        if (!midDone) midAction.run(); // path ended before the trigger was seen: still apply it
+        // Path ended before a trigger point was seen: still apply that action.
+        for (int i = 0; i < actions.length; i++) {
+            if (!done[i]) actions[i].action.run();
+        }
     }
 
     /**
@@ -179,6 +235,9 @@ public class TwoTipExample extends LinearOpMode {
      * flywheel is at speed, then run the transfer for feedMs. Shooting does not block if it times out.
      */
     private void score(long feedMs) {
+        // The transfer belongs to the shot, not to an earlier intake: zero it so the feed only runs
+        // from shoot(), once the flywheel is at speed (GATE_FEED_ON_SPEED). Intake keeps its power.
+        mech.stopShoot();
         mech.spinUpForDistance(); // RPM for the distance we are standing at right now
 
         long readyDeadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
@@ -198,6 +257,18 @@ public class TwoTipExample extends LinearOpMode {
     private void settle(long ms) {
         long end = System.currentTimeMillis() + ms;
         while (opModeIsActive() && System.currentTimeMillis() < end) {
+            loopOnce();
+        }
+    }
+
+    /**
+     * Hold the current aim until the turret is within tolerance, bounded by timeoutMs. Used at the
+     * end of the auto so the turret is back at 0 deg (straight ahead) for TeleOp, which is where
+     * its zero was taken at INIT.
+     */
+    private void holdAimed(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (opModeIsActive() && !mech.isAimed() && System.currentTimeMillis() < deadline) {
             loopOnce();
         }
     }
