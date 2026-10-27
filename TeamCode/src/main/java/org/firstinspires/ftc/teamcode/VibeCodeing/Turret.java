@@ -47,6 +47,15 @@ public class Turret extends OpMode {
     public static double BLUE_CELL1_X = 83.0; public static double BLUE_CELL1_Y = 52.0;
     public static double BLUE_CELL2_X = 83.0; public static double BLUE_CELL2_Y = 87.0;
 
+    // ---- Auto cell swap: when the robot crosses the middle of the field it switches to the cell on its side ----
+    // The two cells of each HIVE sit at different Y, so the middle line is Y = MIDLINE_Y (72 = half of 144).
+    // Crossing it picks the nearer-side cell of your alliance's color. R3 still swaps by hand; the next
+    // crossing of the middle line takes over again.
+    public static boolean AUTO_CELL_SWAP = true;
+    public static double MIDLINE_Y = 72.0;
+    public static double MIDLINE_HYSTERESIS = 3.0;  // inches past the line before it swaps (stops flicker on the line)
+    public static boolean AUTO_CELL_FAR_SIDE = false; // true = pick the cell on the OPPOSITE side to the robot
+
     // ============================
     // TURRET PIVOT POSITION
     // ============================
@@ -99,6 +108,7 @@ public class Turret extends OpMode {
 
     private boolean redAlliance = true;   // starts on RED
     private boolean firstCell = true;     // starts on CELL 1
+    private int lastSide = 0;                 // +1 = robot above MIDLINE_Y, -1 = below, 0 = not decided yet
     private boolean previousBack = false;
     private boolean previousR3 = false;
 
@@ -223,6 +233,25 @@ public class Turret extends OpMode {
         return wrapToTurretRange(relativeAngle);
     }
 
+    /**
+     * Call every loop. When the robot has crossed MIDLINE_Y (past the hysteresis band), selects the
+     * alliance cell on the robot's side (or the far side if AUTO_CELL_FAR_SIDE). Does nothing in between,
+     * so a manual R3 swap sticks until the next crossing.
+     */
+    public void autoSelectCell(Pose pose) {
+        if (!AUTO_CELL_SWAP) { lastSide = 0; return; }
+        int side = lastSide;
+        if (pose.y() > MIDLINE_Y + MIDLINE_HYSTERESIS) side = 1;
+        else if (pose.y() < MIDLINE_Y - MIDLINE_HYSTERESIS) side = -1;
+        if (side == lastSide) return;
+        lastSide = side;
+
+        double y1 = redAlliance ? RED_CELL1_Y : BLUE_CELL1_Y;
+        double y2 = redAlliance ? RED_CELL2_Y : BLUE_CELL2_Y;
+        boolean wantUpper = (side > 0) != AUTO_CELL_FAR_SIDE;
+        firstCell = (y1 >= y2) == wantUpper; // cell 1 is the upper one when its Y is larger
+    }
+
     public void updateTurret(Pose pose) {
         updateTurret(pose, getGoalX(), getGoalY(), trackingEnabled);
     }
@@ -301,6 +330,7 @@ public class Turret extends OpMode {
             previousBack = gamepad1.back;
             previousR3 = gamepad1.right_stick_button;
 
+            autoSelectCell(pose);
             updateTurret(pose);
 
             if (telemetry != null) {

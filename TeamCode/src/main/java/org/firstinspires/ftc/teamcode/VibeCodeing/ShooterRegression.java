@@ -29,8 +29,8 @@ import java.util.List;
 public class ShooterRegression {
 
     // Measured shots (field inches -> flywheel RPM), recorded 26 Oct 2026. These seed the table below.
-    public static final double[] DEFAULT_DIST = {31.6, 46.1, 54.5, 66.8};
-    public static final double[] DEFAULT_RPM = {2900, 3200, 3200, 3300};
+    public static final double[] DEFAULT_DIST = {31.6, 46.1, 54.5, 66.8, 48.9, 66.3};
+    public static final double[] DEFAULT_RPM = {2900, 3200, 3200, 3300, 2815, 3300};
 
     // ---- Live-tunable options ----
     public static int FIT_TYPE = 0;              // see above (0 keeps the old behaviour)
@@ -41,8 +41,8 @@ public class ShooterRegression {
     public static double D2 = 46.1, R2 = 3200;
     public static double D3 = 54.5, R3 = 3200;
     public static double D4 = 66.8, R4 = 3300;
-    public static double D5 = 0,    R5 = 0;
-    public static double D6 = 0,    R6 = 0;
+    public static double D5 = 48.9, R5 = 2815; // 27 Oct 2026, robot (40.36, 5.72) to RED CELL 2
+    public static double D6 = 66.3, R6 = 3300; // 27 Oct 2026, robot (8.61, 5.67) to RED CELL 2
     public static double D7 = 0,    R7 = 0;
     public static double D8 = 0,    R8 = 0;
 

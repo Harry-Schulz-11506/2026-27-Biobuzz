@@ -60,8 +60,8 @@ public class AutoActions {
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
     // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
-    public static double FLOWER_UP = 0.0;
-    public static double FLOWER_DOWN = 0.6;
+    public static double FLOWER_UP = 0.4;
+    public static double FLOWER_DOWN = 0.45;
     public static double STOP_DOWN = 0.0;
     public static double STOP_BLOCKING = 0.5;
 

@@ -26,6 +26,15 @@ public class Shooter {
     public static double I_LIMIT_POWER = 0.25;
     public static double NOMINAL_VOLTAGE = 12.0;
 
+    // ---- Voltage compensation ----
+    // Power needed for a given RPM rises as the battery sags. The feedforward (kS + kV*RPM) is scaled by
+    // NOMINAL_VOLTAGE / battery voltage, so tune kS/kV on a fresh battery at NOMINAL_VOLTAGE.
+    public static boolean VOLTAGE_COMP_ENABLED = true;
+    public static double VOLTAGE_COMP_STRENGTH = 1.0;  // 0 = none, 1 = full, >1 = overcompensate
+    public static double VOLTAGE_READ_SEC = 0.1;       // how often the battery is read (reads are slow)
+    public static double VOLTAGE_FILTER = 0.7;         // 0 = raw reading, closer to 1 = smoother
+    public static double MIN_VOLTAGE = 7.0;            // readings below this are treated as this
+
     // ---- Geometry ----
     public static double MOTOR_TICKS_PER_REV = 28;
     public static double MOTOR_TEETH = 10;
@@ -80,8 +89,9 @@ public class Shooter {
     }
 
     private void readVoltage(double now) {
-        if (lastVoltageRead < 0 || now - lastVoltageRead > 0.25) {
-            voltage = Math.max(voltageSensor.getVoltage(), 7.0);
+        if (lastVoltageRead < 0 || now - lastVoltageRead > VOLTAGE_READ_SEC) {
+            double v = Math.max(voltageSensor.getVoltage(), MIN_VOLTAGE);
+            voltage = (lastVoltageRead < 0) ? v : VOLTAGE_FILTER * voltage + (1 - VOLTAGE_FILTER) * v;
             lastVoltageRead = now;
         }
     }
@@ -139,7 +149,10 @@ public class Shooter {
             integral = 0;
         }
 
-        double feedforward = (kS + kV * targetRpm) * (NOMINAL_VOLTAGE / voltage);
+        double voltageScale = VOLTAGE_COMP_ENABLED
+                ? 1.0 + VOLTAGE_COMP_STRENGTH * (NOMINAL_VOLTAGE / voltage - 1.0)
+                : 1.0;
+        double feedforward = (kS + kV * targetRpm) * voltageScale;
         double out = feedforward + kP * error + kI * integral - kD * derivative;
         out = Range.clip(out, 0, 1);
 

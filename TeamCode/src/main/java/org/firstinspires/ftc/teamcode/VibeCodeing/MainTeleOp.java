@@ -173,6 +173,7 @@ public class MainTeleOp extends OpMode {
         telemetry.addData("RPM Fit", "deg %d, R2 %.3f, %s",
                 regression.getDegreeUsed(), regression.getRSquared(), regression.describeSamples());
         telemetry.addData("Shooter RPM", "%.0f / %.0f", shooter.getRpm(), shooter.getTargetRpm());
+        telemetry.addData("Battery (V)", "%.2f", shooter.getVoltage());
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
         telemetry.addData("Flower / Stop Servo (dpad-left / A)", "%.2f / %.2f",
                 flowerServo.getPosition(), stopServo.getPosition());
