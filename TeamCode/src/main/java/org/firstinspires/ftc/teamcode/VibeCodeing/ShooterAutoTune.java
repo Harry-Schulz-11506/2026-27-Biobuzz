@@ -22,16 +22,17 @@ public class ShooterAutoTune extends LinearOpMode {
     public static double TUNE_RPM = 2200;
     public static double FF_POWER_LOW = 0.35;
     public static double FF_POWER_HIGH = 0.80;
-    public static double FF_SETTLE_SEC = 2.5;
+    public static double FF_SETTLE_SEC = 5.0; // the heavier flywheel needs longer to settle
     public static double FF_SAMPLE_SEC = 1.0;
     public static double RELAY_DELTA_POWER = 0.08;
     public static double HYSTERESIS_RPM = 40;
     public static int WARMUP_CYCLES = 2;
     public static int MEASURE_CYCLES = 10;
-    public static double TIMEOUT_SEC = 40;
-    public static double ABORT_RPM = 3500;
+    public static double TIMEOUT_SEC = 60;
+    public static double ABORT_RPM = 5500; // the motor free speed is 6000 RPM and the ratio is 1:1
 
     private Shooter shooter;
+    private String abortReason = "";      // why measureRpmAtPower() gave up (shown in the failure message)
 
     /** Hold an open-loop power, wait to settle, then return the average RPM. Returns NaN if aborted. */
     private double measureRpmAtPower(double power) {
@@ -41,7 +42,10 @@ public class ShooterAutoTune extends LinearOpMode {
         while (opModeIsActive() && !gamepad1.b && t.seconds() < FF_SETTLE_SEC + FF_SAMPLE_SEC) {
             shooter.setOpenLoopPower(power);
             shooter.updateMeasurement();
-            if (shooter.getRpm() > ABORT_RPM) return Double.NaN;
+            if (shooter.getRpm() > ABORT_RPM) {
+                abortReason = String.format("RPM %.0f went above ABORT_RPM (%.0f) at power %.2f", shooter.getRpm(), ABORT_RPM, power);
+                return Double.NaN;
+            }
             if (t.seconds() > FF_SETTLE_SEC) {
                 sum += shooter.getRpm();
                 n++;
@@ -51,6 +55,8 @@ public class ShooterAutoTune extends LinearOpMode {
             telemetry.addData("rpm", shooter.getRpm());
             telemetry.update();
         }
+        if (gamepad1.b) abortReason = "B was pressed";
+        else if (n == 0) abortReason = String.format("no RPM samples at power %.2f (RPM stayed at %.0f)", power, shooter.getRpm());
         return (n == 0) ? Double.NaN : sum / n;
     }
 
@@ -77,9 +83,11 @@ public class ShooterAutoTune extends LinearOpMode {
         double vHigh = shooter.getVoltage();
 
         if (Double.isNaN(rpmLow) || Double.isNaN(rpmHigh)) {
-            failure = "Aborted, or RPM exceeded ABORT_RPM / no RPM reading. Check Shooter.REVERSED and the motor name 'shooter'.";
+            failure = "Phase 1 stopped: " + abortReason + ". If RPM went too high, raise ABORT_RPM or lower FF_POWER_HIGH; "
+                    + "if RPM read 0, check Shooter.REVERSED, the encoder cable and the motor name 'shooter'.";
         } else if (rpmHigh - rpmLow < 100) {
-            failure = "RPM barely changed between the two powers. Check the encoder cable and the motor.";
+            failure = String.format("RPM barely changed between the two powers (%.0f at %.2f, %.0f at %.2f). "
+                    + "Check the encoder cable and the motor.", rpmLow, FF_POWER_LOW, rpmHigh, FF_POWER_HIGH);
         } else {
             // Normalise power to nominal voltage: P * V / Vnom = kS + kV * rpm
             double pLow = FF_POWER_LOW * vLow / Shooter.NOMINAL_VOLTAGE;
