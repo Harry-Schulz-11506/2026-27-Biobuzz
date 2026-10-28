@@ -60,9 +60,9 @@ public class AutoActions {
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
     // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
-    public static double FLOWER_UP = 0.4;
-    public static double FLOWER_DOWN = 0.45;
-    public static double STOP_DOWN = 0.0;
+    public static double FLOWER_UP = 0.9;
+    public static double FLOWER_DOWN = 0.1;
+    public static double STOP_DOWN = 1;
     public static double STOP_BLOCKING = 0.5;
 
     private final Turret turret = new Turret();
@@ -160,8 +160,11 @@ public class AutoActions {
         shooter.update();
 
         if (feeding) {
-            boolean ready = !GATE_FEED_ON_SPEED || shooter.atSpeed();
-            transfer.setPower(ready ? TRANSFER_POWER : 0);
+            // Wait for the flywheel to be at speed ONCE, then keep feeding until stopShoot(). Checking
+            // at speed every loop stopped the transfer each time a ball dragged the RPM out of the band.
+            if (!feedLatched && (!GATE_FEED_ON_SPEED || shooter.atSpeed())) feedLatched = true;
+            transfer.setPower(feedLatched ? TRANSFER_POWER : 0);
+            intake.setPower(feedLatched ? INTAKE_POWER : 0); // intake and transfer always spin together
         }
     }
 
@@ -248,6 +251,11 @@ public class AutoActions {
         spinUp(regression.predict(getDistanceToTarget(), MIN_AUTO_RPM, MAX_AUTO_RPM));
     }
 
+    /** Same, plus rpmOffset (negative = slower). Only the autos that pass an offset are affected. */
+    public void spinUpForDistance(double rpmOffset) {
+        spinUp(regression.predict(getDistanceToTarget(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmOffset);
+    }
+
     public void spinDown() {
         commandedRpm = 0;
         stopShoot();
@@ -270,30 +278,44 @@ public class AutoActions {
     /** Start feeding. With GATE_FEED_ON_SPEED on, the transfer only runs once the flywheel is at speed. */
     public void shoot() {
         feeding = true;
+        feedLatched = false;
+    }
+
+    /** Start feeding immediately, without waiting for the flywheel to be at speed (used after a ready timeout). */
+    public void shootNow() {
+        feeding = true;
+        feedLatched = true;
     }
 
     public void stopShoot() {
         feeding = false;
+        feedLatched = false;
         transfer.setPower(0);
+        intake.setPower(0);
     }
 
     public boolean isFeeding() { return feeding; }
 
+    private boolean feedLatched = false; // true once the flywheel was at speed for this shot
+
     // ===================== INTAKE / TRANSFER (raw) =====================
 
-    public void intakeIn() { intake.setPower(INTAKE_POWER); }
-    public void intakeOut() { intake.setPower(-INTAKE_POWER); }
-    public void intakeStop() { intake.setPower(0); }
+    // The intake and the transfer always spin together: every one of these moves both motors.
+
+    public void intakeIn() { bothIn(); }
+    public void intakeOut() { bothOut(); }
+    public void intakeStop() { bothStop(); }
 
     /** Intake in and transfer in together, the way drive practice picks up artifacts. */
-    public void intakeInWithTransfer() {
-        intakeIn();
-        transferIn();
-    }
+    public void intakeInWithTransfer() { bothIn(); }
 
-    public void transferIn() { transfer.setPower(TRANSFER_POWER); }
-    public void transferOut() { transfer.setPower(-TRANSFER_POWER); }
-    public void transferStop() { transfer.setPower(0); }
+    public void transferIn() { bothIn(); }
+    public void transferOut() { bothOut(); }
+    public void transferStop() { bothStop(); }
+
+    private void bothIn() { intake.setPower(INTAKE_POWER); transfer.setPower(TRANSFER_POWER); }
+    private void bothOut() { intake.setPower(-INTAKE_POWER); transfer.setPower(-TRANSFER_POWER); }
+    private void bothStop() { intake.setPower(0); transfer.setPower(0); }
 
     // ===================== FLOWER / STOP SERVOS =====================
 

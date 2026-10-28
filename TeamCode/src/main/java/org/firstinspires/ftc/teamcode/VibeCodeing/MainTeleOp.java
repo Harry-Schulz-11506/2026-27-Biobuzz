@@ -44,6 +44,7 @@ public class MainTeleOp extends OpMode {
     private Turret turret;
     private Shooter shooter;
     private ShooterRegression regression;
+    private boolean feedLatched = false;
     private DcMotorEx intake, transfer;
     private Servo flowerServo, stopServo;
 
@@ -140,19 +141,27 @@ public class MainTeleOp extends OpMode {
         double intakePower = feedButton
                 ? INTAKE_POWER
                 : (gamepad1.right_trigger - gamepad1.left_trigger) * INTAKE_POWER;
-        intake.setPower(Range.clip(intakePower, -1, 1));
 
+        // The intake and the transfer always spin together: whichever one is asked to move, both do.
+        // Wait for at speed once per bumper press, then keep feeding while it is held. Checking at speed
+        // every loop stopped the transfer each time a ball dragged the RPM out of the band.
+        if (!gamepad1.right_bumper) feedLatched = false;
+        else if (!feedLatched && (!REQUIRE_AT_SPEED || shooter.atSpeed())) feedLatched = true;
+        boolean feedToShooter = gamepad1.right_bumper && feedLatched;
         double transferPower = 0;
         if (feedButton) {
             transferPower = INTAKE_TRANSFER_POWER;                 // A: intake and transfer together
-        } else if (gamepad1.right_bumper) {
-            boolean blocked = REQUIRE_AT_SPEED && !shooter.atSpeed();
-            if (!blocked) transferPower = TRANSFER_POWER;
+        } else if (feedToShooter) {
+            transferPower = TRANSFER_POWER;                        // right bumper, once at speed
         } else if (gamepad1.left_bumper) {
             transferPower = -TRANSFER_POWER;
-        } else if (TRANSFER_WITH_INTAKE && Math.abs(intakePower) > 0.05) {
+        } else if (Math.abs(intakePower) > 0.05) {
             transferPower = Math.signum(intakePower) * INTAKE_TRANSFER_POWER;
         }
+        if (Math.abs(intakePower) <= 0.05 && Math.abs(transferPower) > 0.05) {
+            intakePower = Math.signum(transferPower) * INTAKE_POWER; // bumper feed also spins the intake
+        }
+        intake.setPower(Range.clip(intakePower, -1, 1));
         transfer.setPower(transferPower);
 
         // ---- Stop Servo: open only while A is held, blocking the rest of the time ----

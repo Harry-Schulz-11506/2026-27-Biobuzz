@@ -23,9 +23,9 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
  * Sequence in this example:
  *   1. at the start pose: spin up, wait until ready, shoot and run the transfer
  *   2. path 1, then one second of intake (intake + transfer) at the end of it
- *   3. paths 2-3: the flower servo is down, nothing else runs
- *   4. path 4: flower down from halfway, then intake + shoot at the end of it
- *   5. path 5: flower up at the first quarter, then shoot at the end of it
+ *   3. paths 2-3: the flower servo is down, and the intake + transfer run while it is down
+ *   4. path 4: flower down (intake + transfer on) from halfway, then shoot at the end of it
+ *   5. path 5: flower up (intake + transfer off) at the first quarter, then shoot at the end of it
  *   6. path 6: intake WHILE driving, then nothing running
  *   7. path 7, then shoot at the end of it
  *   8. path 8 (park), then the turret goes back to 0 deg and everything off
@@ -50,10 +50,16 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 @Autonomous(name = "TwoTip W/Shooting", group = "Autonomous")
 public class TwoTipExample extends LinearOpMode {
 
+    /** Added to every shot RPM in this auto only (TeleOp and the other autos are not affected). */
+    public static double RPM_OFFSET = -200;
+    /** How long the intake + transfer run after the flower goes down: 1st flower intake (paths 2-3). */
+    public static long FLOWER_INTAKE_1_MS = 2000;
+    /** 2nd flower intake (from halfway along path 4). Time spent shooting is not counted. */
+    public static long FLOWER_INTAKE_2_MS = 4000;
     /** How long to wait for "aimed + flywheel at speed" before shooting anyway. */
     public static long READY_TIMEOUT_MS = 2500;
-    /** How long to run the transfer to launch the artifact(s). */
-    public static long FEED_MS = 1200;
+    /** How long to run the intake + transfer for each shot (3 seconds). */
+    public static long FEED_MS = 3000;
     /** How long to wait for Pedro report a newly started path as busy. */
     public static long PICKUP_TIMEOUT_MS = 500;
     /** How long the end-of-path-1 intake window runs (intake + transfer). */
@@ -64,6 +70,8 @@ public class TwoTipExample extends LinearOpMode {
     private Follower follower;
     private AutoActions mech;
     private String stage = "init";
+    private long intakeEndMs = 0;      // when the current flower intake window ends (0 = none)
+    private boolean inShot = false;    // true while score() runs, so the flower intake timer waits
 
     private final PoseFactory poseFactory = PoseFactory.degrees();
 
@@ -119,29 +127,25 @@ public class TwoTipExample extends LinearOpMode {
         mech.transferStop();
         mech.stopBlocking(); // back to holding the artifacts in
 
-        // ---- 4. Paths 2-3 with the flower down: still RED 2, then back on RED 1 ----
-        mech.flowerDown();
+        // ---- 4. Paths 2-3 with the flower down (intake + transfer run): RED 2, then back on RED 1 ----
+        flowerDownIntake(FLOWER_INTAKE_1_MS);
         stage = "path 2: RED 2, flower down";
         drive(path2());
         mech.trackGoal(true, true); // RED 1
         stage = "path 3: RED 1, flower down";
         drive(path3());
-        mech.flowerUp();
+        flowerUpStop();
 
         // ---- 5. Path 4 on RED 1, flower down from halfway, then intake + shoot ----
         stage = "path 4: RED 1, flower down from halfway";
-        drive(path4(), at(0.5, () -> mech.flowerDown()));
-        stage = "end of path 4: intake + shoot: RED 1";
-        mech.stopDown(); // open for the intake, the transfer feeds through it
-        mech.intakeInWithTransfer();
+        drive(path4(), at(0.5, () -> flowerDownIntake(FLOWER_INTAKE_2_MS)));
+        stage = "end of path 4: shoot: RED 1 (flower still down)";
         score(FEED_MS);
-        mech.intakeStop();
-        mech.transferStop();
-        mech.stopBlocking();
+        resumeFlowerIntake(); // flower is still down: carry on with whatever is left of the 4 seconds
 
         // ---- 6. Path 5: flower up at the first quarter, RED 2 from halfway, shoot at the end ----
         stage = "path 5: flower up at 1/4, RED 2 from halfway";
-        drive(path5(), at(0.25, () -> mech.flowerUp()), at(0.5, () -> mech.trackGoal(true, false)));
+        drive(path5(), at(0.25, () -> flowerUpStop()), at(0.5, () -> mech.trackGoal(true, false)));
         stage = "end of path 5: shoot: RED 2";
         score(FEED_MS);
 
@@ -231,26 +235,63 @@ public class TwoTipExample extends LinearOpMode {
     }
 
     /**
+     * Flower down: it also runs the intake and the transfer for ms, with the stop servo open so
+     * artifacts come in. When the time is up they stop and the stop servo goes back to blocking.
+     */
+    private void flowerDownIntake(long ms) {
+        mech.flowerDown();
+        mech.stopDown();
+        mech.intakeInWithTransfer();
+        intakeEndMs = System.currentTimeMillis() + ms;
+    }
+
+    /** After a shot while the flower is still down: restart the intake for the time that is left. */
+    private void resumeFlowerIntake() {
+        if (intakeEndMs > 0 && System.currentTimeMillis() < intakeEndMs) {
+            mech.stopDown();
+            mech.intakeInWithTransfer();
+        } else {
+            intakeEndMs = 0;
+        }
+    }
+
+    /** Flower up: intake and transfer off, stop servo back to blocking. */
+    private void flowerUpStop() {
+        intakeEndMs = 0;
+        mech.flowerUp();
+        mech.intakeStop();
+        mech.transferStop();
+        mech.stopBlocking();
+    }
+
+    /**
      * Spin up for the current distance, wait (up to READY_TIMEOUT_MS) until the turret is aimed and the
      * flywheel is at speed, then run the transfer for feedMs. Shooting does not block if it times out.
      */
     private void score(long feedMs) {
         // The transfer belongs to the shot, not to an earlier intake: zero it so the feed only runs
         // from shoot(), once the flywheel is at speed (GATE_FEED_ON_SPEED). Intake keeps its power.
+        inShot = true;
+        long shotStart = System.currentTimeMillis();
         mech.stopShoot();
-        mech.spinUpForDistance(); // RPM for the distance we are standing at right now
+        mech.spinUpForDistance(RPM_OFFSET); // RPM for the distance we are standing at right now, minus 200
 
         long readyDeadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
         while (opModeIsActive() && !mech.isReadyToShoot() && System.currentTimeMillis() < readyDeadline) {
             loopOnce();
         }
 
-        mech.shoot(); // transfer only runs once the flywheel is at speed (GATE_FEED_ON_SPEED)
+        // Ready: wait-for-speed feed. Timed out: feed anyway, so a flywheel that will not settle within
+        // the tolerance cannot stop the intake and transfer from running at all.
+        if (mech.isReadyToShoot()) mech.shoot(); else mech.shootNow();
         long feedDeadline = System.currentTimeMillis() + feedMs;
         while (opModeIsActive() && System.currentTimeMillis() < feedDeadline) {
             loopOnce();
         }
         mech.stopShoot();
+        mech.intakeStop();
+        if (intakeEndMs > 0) intakeEndMs += System.currentTimeMillis() - shotStart; // shooting time does not count
+        inShot = false;
     }
 
     /** Keep the mechanisms alive for ms without driving (for example while a path hands over). */
@@ -275,6 +316,13 @@ public class TwoTipExample extends LinearOpMode {
 
     /** One loop: Pedro, then the mechanisms (turret PID + flywheel PID + gated feed), then telemetry. */
     private void loopOnce() {
+        // End of a flower intake window: stop the intake + transfer and hold the artifacts in.
+        if (intakeEndMs > 0 && !inShot && System.currentTimeMillis() >= intakeEndMs) {
+            intakeEndMs = 0;
+            mech.intakeStop();
+            mech.transferStop();
+            mech.stopBlocking();
+        }
         follower.update();
         mech.update();
         telemetry.addData("stage", stage);
