@@ -27,7 +27,7 @@ public class ShooterAutoTune extends LinearOpMode {
     public static double RELAY_DELTA_POWER = 0.08;
     public static double HYSTERESIS_RPM = 40;
     public static int WARMUP_CYCLES = 2;
-    public static int MEASURE_CYCLES = 10;
+    public static int MEASURE_CYCLES = 5;
     public static double TIMEOUT_SEC = 60;
     public static double ABORT_RPM = 5500; // the motor free speed is 6000 RPM and the ratio is 1:1
 

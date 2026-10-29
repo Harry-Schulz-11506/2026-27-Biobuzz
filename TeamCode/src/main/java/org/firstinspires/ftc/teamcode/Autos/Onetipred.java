@@ -28,7 +28,7 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 public class Onetipred extends LinearOpMode {
 
     /** Added to the shot RPM in this auto only (TeleOp and the other autos are not affected). */
-    public static double RPM_OFFSET = -,400;
+    public static double RPM_OFFSET = -400;
     /** How long to run the transfer for the opening shot. */
     public static long SHOOT_MS = 3000;
     /** How long to wait for "aimed + flywheel at speed" before shooting anyway. */
