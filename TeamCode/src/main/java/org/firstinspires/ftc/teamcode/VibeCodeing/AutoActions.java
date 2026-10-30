@@ -62,8 +62,8 @@ public class AutoActions {
     // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
     public static double FLOWER_UP = 0.9;
     public static double FLOWER_DOWN = 0.1;
-    public static double STOP_DOWN = 1;
-    public static double STOP_BLOCKING = 0.5;
+    public static double STOP_DOWN = 0.5;
+    public static double STOP_BLOCKING = 1;
 
     private final Turret turret = new Turret();
     private final Shooter shooter = new Shooter();

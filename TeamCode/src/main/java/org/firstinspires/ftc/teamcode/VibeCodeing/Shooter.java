@@ -18,8 +18,8 @@ import com.qualcomm.robotcore.util.Range;
 public class Shooter {
 
     // ---- Velocity PIDF (tune in Dashboard, or run the ShooterAutoTune OpMode) ----
-    public static double kP = 0.000564;   // power per RPM of error
-    public static double kI = 0.000368;
+    public static double kP = 0.000550;   // power per RPM of error
+    public static double kI = 0.000478;
     public static double kD = 0.0;
     public static double kV = 0.000344;   // power per RPM  (~1 / 3333 at 12 V)
     public static double kS = 0.12706;      // static offset power while target > 0

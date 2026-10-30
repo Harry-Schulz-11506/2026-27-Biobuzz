@@ -37,12 +37,12 @@ public class ShooterRegression {
     public static double SHOT_OFFSET_RPM = 0;    // added to every prediction
 
     // ---- Live-tunable shot table (D = distance in inches, R = RPM; D = 0 means the slot is empty) ----
-    public static double D1 = 31.6, R1 = 2900;
-    public static double D2 = 46.1, R2 = 3200;
-    public static double D3 = 54.5, R3 = 3200;
-    public static double D4 = 66.8, R4 = 3300;
-    public static double D5 = 48.9, R5 = 2815; // 27 Oct 2026, robot (40.36, 5.72) to RED CELL 2
-    public static double D6 = 66.3, R6 = 3300; // 27 Oct 2026, robot (8.61, 5.67) to RED CELL 2
+    public static double D1 = 31.6, R1 = 2800;
+    public static double D2 = 46.1, R2 = 3100;
+    public static double D3 = 54.5, R3 = 3100;
+    public static double D4 = 66.8, R4 = 3100;
+    public static double D5 = 48.9, R5 = 2715; // 27 Oct 2026, robot (40.36, 5.72) to RED CELL 2
+    public static double D6 = 66.3, R6 = 3200; // 27 Oct 2026, robot (8.61, 5.67) to RED CELL 2
     public static double D7 = 0,    R7 = 0;
     public static double D8 = 0,    R8 = 0;
 
