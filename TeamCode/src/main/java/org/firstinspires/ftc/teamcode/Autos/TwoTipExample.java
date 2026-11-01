@@ -51,11 +51,13 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 public class TwoTipExample extends LinearOpMode {
 
     /** Added to every shot RPM in this auto only (TeleOp and the other autos are not affected). */
-    public static double RPM_OFFSET = -200;
+    public static double RPM_OFFSET = -300;
     /** How long the intake + transfer run after the flower goes down: 1st flower intake (paths 2-3). */
-    public static long FLOWER_INTAKE_1_MS = 2000;
+    /** Wait (robot stopped, flower down, intake + transfer running) at the end of path 3, before the flower goes up. */
+    public static long FLOWER_WAIT_MS = 2000;
+    public static long FLOWER_INTAKE_1_MS = 0;
     /** 2nd flower intake (from halfway along path 4). Time spent shooting is not counted. */
-    public static long FLOWER_INTAKE_2_MS = 4000;
+    public static long FLOWER_INTAKE_2_MS = 0;
     /** How long to wait for "aimed + flywheel at speed" before shooting anyway. */
     public static long READY_TIMEOUT_MS = 2500;
     /** How long to run the intake + transfer for each shot (3 seconds). */
@@ -70,6 +72,8 @@ public class TwoTipExample extends LinearOpMode {
     private Follower follower;
     private AutoActions mech;
     private String stage = "init";
+    private boolean flowerIsDown = false; // flower commanded down: intake + transfer run, stopper open
+    private boolean windowDone = false;   // a timed flower window has run out
     private long intakeEndMs = 0;      // when the current flower intake window ends (0 = none)
     private boolean inShot = false;    // true while score() runs, so the flower intake timer waits
 
@@ -115,26 +119,26 @@ public class TwoTipExample extends LinearOpMode {
 
         // ---- 2. Path 1 tracking RED 2 ----
         mech.trackGoal(true, false); // RED 2
-        stage = "path 1: RED 2";
-        drive(path1());
+        stage = "path 1: RED 2, flower down from halfway";
+        drive(path1(), at(0.5, () -> flowerDownIntake(FLOWER_INTAKE_1_MS)));
 
         // ---- 3. End of path 1: one second of intake (stop open), then nothing on ----
         stage = "end of path 1: intake for 1 s";
-        mech.stopDown(); // open, so the intake can take artifacts in
         mech.intakeInWithTransfer();
         settle(INTAKE_MS);
-        mech.intakeStop();
-        mech.transferStop();
-        mech.stopBlocking(); // back to holding the artifacts in
+        if (!flowerIsDown) { // with the flower down the intake + transfer keep running
+            mech.intakeStop();
+            mech.transferStop();
+        }
 
         // ---- 4. Paths 2-3 with the flower down (intake + transfer run): RED 2, then back on RED 1 ----
-        flowerDownIntake(FLOWER_INTAKE_1_MS);
         stage = "path 2: RED 2, flower down";
         drive(path2());
         mech.trackGoal(true, true); // RED 1
         stage = "path 3: RED 1, flower down";
         drive(path3());
-        flowerUpStop();
+        stage = "end of path 3: wait with the flower down";
+        settle(FLOWER_WAIT_MS); // the flower stays down (no flower-up here)
 
         // ---- 5. Path 4 on RED 1, flower down from halfway, then intake + shoot ----
         stage = "path 4: RED 1, flower down from halfway";
@@ -151,12 +155,10 @@ public class TwoTipExample extends LinearOpMode {
 
         // ---- 7. Path 6 tracking RED 2 with the intake running the whole way ----
         stage = "path 6: RED 2, intake while driving";
-        mech.stopDown(); // open for the intake
-        mech.intakeInWithTransfer();
+        mech.intakeInWithTransfer(); // stopper blocks while intaking
         drive(path6());
         mech.intakeStop();
         mech.transferStop();
-        mech.stopBlocking();
 
         // ---- 8. Path 7 tracking RED 2, then shoot at the end of it ----
         stage = "path 7: RED 2";
@@ -239,24 +241,31 @@ public class TwoTipExample extends LinearOpMode {
      * artifacts come in. When the time is up they stop and the stop servo goes back to blocking.
      */
     private void flowerDownIntake(long ms) {
+        flowerIsDown = true;
+        windowDone = false;
         mech.flowerDown();
-        mech.stopDown();
         mech.intakeInWithTransfer();
-        intakeEndMs = System.currentTimeMillis() + ms;
+        // ms <= 0: run the whole time the flower is down. ms > 0: only for that long.
+        intakeEndMs = ms > 0 ? System.currentTimeMillis() + ms : 0;
+    }
+
+    /** While the flower is down: keep the intake + transfer running with the stopper open. */
+    private void applyFlowerDown() {
+        if (!flowerIsDown) return;
+        if (!windowDone) {
+            mech.intakeInWithTransfer();
+        }
     }
 
     /** After a shot while the flower is still down: restart the intake for the time that is left. */
     private void resumeFlowerIntake() {
-        if (intakeEndMs > 0 && System.currentTimeMillis() < intakeEndMs) {
-            mech.stopDown();
-            mech.intakeInWithTransfer();
-        } else {
-            intakeEndMs = 0;
-        }
+        applyFlowerDown();
     }
 
     /** Flower up: intake and transfer off, stop servo back to blocking. */
     private void flowerUpStop() {
+        flowerIsDown = false;
+        windowDone = false;
         intakeEndMs = 0;
         mech.flowerUp();
         mech.intakeStop();
@@ -274,7 +283,7 @@ public class TwoTipExample extends LinearOpMode {
         inShot = true;
         long shotStart = System.currentTimeMillis();
         mech.stopShoot();
-        mech.spinUpForDistance(RPM_OFFSET); // RPM for the distance we are standing at right now, minus 200
+        mech.spinUpForDistance(RPM_OFFSET); // RPM for the distance we are standing at right now, minus 600
 
         long readyDeadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
         while (opModeIsActive() && !mech.isReadyToShoot() && System.currentTimeMillis() < readyDeadline) {
@@ -317,11 +326,14 @@ public class TwoTipExample extends LinearOpMode {
     /** One loop: Pedro, then the mechanisms (turret PID + flywheel PID + gated feed), then telemetry. */
     private void loopOnce() {
         // End of a flower intake window: stop the intake + transfer and hold the artifacts in.
-        if (intakeEndMs > 0 && !inShot && System.currentTimeMillis() >= intakeEndMs) {
-            intakeEndMs = 0;
-            mech.intakeStop();
-            mech.transferStop();
-            mech.stopBlocking();
+        if (flowerIsDown && !inShot) {
+            if (intakeEndMs > 0 && !windowDone && System.currentTimeMillis() >= intakeEndMs) {
+                windowDone = true;
+                mech.intakeStop();
+                mech.transferStop();
+                mech.stopBlocking();
+            }
+            applyFlowerDown();
         }
         follower.update();
         mech.update();

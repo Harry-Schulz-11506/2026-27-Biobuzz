@@ -60,8 +60,8 @@ public class AutoActions {
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
     // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
-    public static double FLOWER_UP = 0.9;
-    public static double FLOWER_DOWN = 0.1;
+    public static double FLOWER_UP = 1;
+    public static double FLOWER_DOWN = 0.3;
     public static double STOP_DOWN = 0.5;
     public static double STOP_BLOCKING = 1;
 
@@ -157,6 +157,7 @@ public class AutoActions {
             }
         }
 
+        shooter.setFeeding(feeding && feedLatched); // fight the RPM drop while a shot is being fed
         shooter.update();
 
         if (feeding) {
@@ -248,12 +249,12 @@ public class AutoActions {
 
     /** Spin the flywheel to the RPM the measured distance table wants at the current pose. */
     public void spinUpForDistance() {
-        spinUp(regression.predict(getDistanceToTarget(), MIN_AUTO_RPM, MAX_AUTO_RPM));
+        spinUp(regression.predict(getDistanceToTarget(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM));
     }
 
     /** Same, plus rpmOffset (negative = slower). Only the autos that pass an offset are affected. */
     public void spinUpForDistance(double rpmOffset) {
-        spinUp(regression.predict(getDistanceToTarget(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmOffset);
+        spinUp(regression.predict(getDistanceToTarget(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmOffset);
     }
 
     public void spinDown() {
@@ -277,17 +278,20 @@ public class AutoActions {
 
     /** Start feeding. With GATE_FEED_ON_SPEED on, the transfer only runs once the flywheel is at speed. */
     public void shoot() {
+        stopDown(); // stopper open so the artifacts can reach the flywheel
         feeding = true;
         feedLatched = false;
     }
 
     /** Start feeding immediately, without waiting for the flywheel to be at speed (used after a ready timeout). */
     public void shootNow() {
+        stopDown(); // stopper open so the artifacts can reach the flywheel
         feeding = true;
         feedLatched = true;
     }
 
     public void stopShoot() {
+        stopBlocking(); // shot over: stopper closed again
         feeding = false;
         feedLatched = false;
         transfer.setPower(0);
@@ -313,9 +317,10 @@ public class AutoActions {
     public void transferOut() { bothOut(); }
     public void transferStop() { bothStop(); }
 
-    private void bothIn() { intake.setPower(INTAKE_POWER); transfer.setPower(TRANSFER_POWER); }
+    // The stopper is open (STOP_DOWN) only while shooting; it blocks the rest of the time, intaking included.
+    private void bothIn() { stopBlocking(); intake.setPower(INTAKE_POWER); transfer.setPower(TRANSFER_POWER); }
     private void bothOut() { intake.setPower(-INTAKE_POWER); transfer.setPower(-TRANSFER_POWER); }
-    private void bothStop() { intake.setPower(0); transfer.setPower(0); }
+    private void bothStop() { intake.setPower(0); transfer.setPower(0); stopBlocking(); }
 
     // ===================== FLOWER / STOP SERVOS =====================
 

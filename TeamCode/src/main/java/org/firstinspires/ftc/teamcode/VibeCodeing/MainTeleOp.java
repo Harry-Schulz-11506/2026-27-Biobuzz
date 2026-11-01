@@ -11,6 +11,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
+import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 
 /**
  * Main TeleOp coordinating Driving/Turret (via Turret subsystem), Shooter/Intake/Transfer and the
@@ -27,11 +28,28 @@ public class MainTeleOp extends OpMode {
 
     // ---- Dashboard Configuration ----
     public static double INTAKE_POWER = 1.0;
-    public static double TRANSFER_POWER = 1.0;
+    public static double TRANSFER_POWER = -0.8;
     public static boolean TRANSFER_WITH_INTAKE = true;
     public static double INTAKE_TRANSFER_POWER = 1.0;
     public static boolean REQUIRE_AT_SPEED = true;
     public static double RPM_STEP = 100;
+
+    // ---- Ball counting by transfer motor current ----
+    // Each artifact pulled in makes the transfer motor draw a spike of current. While the intake trigger is
+    // held, those spikes are counted; at BALL_LIMIT the intake and transfer stop. The count resets when you
+    // shoot (right bumper), reverse (left bumper) or press gamepad1 Y (manual reset / override).
+    public static boolean BALL_COUNT_ENABLED = false;
+    public static int BALL_LIMIT = 4;
+    public static double BALL_CURRENT_AMPS = 3.0;      // current above this counts as a ball going through
+    public static double BALL_RELEASE_AMPS = 2.0;      // current must fall below this before the next ball counts
+    public static double BALL_MIN_GAP_SEC = 0.15;      // ignores spikes closer together than this
+
+    // ---- Jam protection ----
+    // If the transfer draws OVERCURRENT_AMPS or more (for OVERCURRENT_HOLD_SEC) the intake and transfer are
+    // locked off. They stay off until controller 2 presses A.
+    public static boolean OVERCURRENT_ENABLED = true;
+    public static double OVERCURRENT_AMPS = 10;
+    public static double OVERCURRENT_HOLD_SEC = 0.1;   // must stay above the limit this long (ignores brief spikes)
 
     // Shooter distance regression
     public static boolean AUTO_RPM_FROM_DISTANCE = true;
@@ -39,7 +57,7 @@ public class MainTeleOp extends OpMode {
     // 2 = curve, fits the measured band tighter but turns back down past about 70 in.
     public static int REGRESSION_DEGREE = 1;
     public static double MIN_AUTO_RPM = 1000;
-    public static double MAX_AUTO_RPM = 3300;
+    public static double MAX_AUTO_RPM = 6000;
 
     private Turret turret;
     private Shooter shooter;
@@ -47,6 +65,13 @@ public class MainTeleOp extends OpMode {
     private boolean feedLatched = false;
     private DcMotorEx intake, transfer;
     private Servo flowerServo, stopServo;
+
+    private boolean intakeLocked = false;
+    private double overSince = -1;
+    private boolean prevPad2A = false;
+    private int ballCount = 0;
+    private boolean ballSpikeActive = false;
+    private double lastBallTime = -1;
 
     private double lastDistance = 0;
     private double rpmTrim = 0;
@@ -111,7 +136,8 @@ public class MainTeleOp extends OpMode {
         // Distance to the goal the turret is tracking (BACK / right stick button), used by the RPM regression.
         if (turret.follower != null) {
             Pose pose = turret.follower.pose();
-            lastDistance = Math.hypot(pose.x() - turret.getGoalX(), pose.y() - turret.getGoalY());
+            // Distance to the virtual goal (the goal moved back by the robot's velocity), so the RPM is right on the move.
+            lastDistance = Math.hypot(pose.x() - turret.getAimX(), pose.y() - turret.getAimY());
         }
 
         // ---- Shooter Control (always spinning: there is no on/off toggle any more) ----
@@ -124,12 +150,12 @@ public class MainTeleOp extends OpMode {
         }
         if (regression.getRequestedDegree() != REGRESSION_DEGREE) regression.refit(REGRESSION_DEGREE);
         if (autoRpm) {
-            commandedRpm = regression.predict(lastDistance, MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmTrim;
+            commandedRpm = regression.predict(lastDistance, shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmTrim;
             commandedRpm = Math.max(0, Math.min(MAX_AUTO_RPM, commandedRpm));
         } else {
             commandedRpm = Shooter.TARGET_RPM;
         }
-        if (gamepad1.left_stick_button && !prevL3) { regression.addSample(lastDistance, commandedRpm); }
+        if (gamepad1.left_stick_button && !prevL3) { regression.addSample(lastDistance, commandedRpm, shooter.getVoltage()); }
         shooter.setTargetRpm(commandedRpm);
         shooter.update();
 
@@ -148,6 +174,7 @@ public class MainTeleOp extends OpMode {
         if (!gamepad1.right_bumper) feedLatched = false;
         else if (!feedLatched && (!REQUIRE_AT_SPEED || shooter.atSpeed())) feedLatched = true;
         boolean feedToShooter = gamepad1.right_bumper && feedLatched;
+        shooter.setFeeding(feedToShooter); // fight the RPM drop while a shot is being fed
         double transferPower = 0;
         if (feedButton) {
             transferPower = INTAKE_TRANSFER_POWER;                 // A: intake and transfer together
@@ -160,6 +187,48 @@ public class MainTeleOp extends OpMode {
         }
         if (Math.abs(intakePower) <= 0.05 && Math.abs(transferPower) > 0.05) {
             intakePower = Math.signum(transferPower) * INTAKE_POWER; // bumper feed also spins the intake
+        }
+        // Ball counting: only while the intake trigger is held on its own (not A, not shooting).
+        double transferAmps = transfer.getCurrent(CurrentUnit.AMPS);
+        if (gamepad1.right_bumper || gamepad1.left_bumper || gamepad1.left_trigger > 0.05 || gamepad1.y) {
+            ballCount = 0;
+            ballSpikeActive = false;
+        }
+        boolean intakeTriggerOnly = BALL_COUNT_ENABLED && !feedButton && !feedToShooter
+                && gamepad1.right_trigger > 0.05 && transferPower > 0.05;
+        if (intakeTriggerOnly) {
+            double nowS = System.nanoTime() / 1e9;
+            if (!ballSpikeActive && transferAmps >= BALL_CURRENT_AMPS
+                    && (lastBallTime < 0 || nowS - lastBallTime >= BALL_MIN_GAP_SEC)) {
+                ballCount++;
+                ballSpikeActive = true;
+                lastBallTime = nowS;
+            } else if (ballSpikeActive && transferAmps < BALL_RELEASE_AMPS) {
+                ballSpikeActive = false;
+            }
+            if (ballCount >= BALL_LIMIT) {  // full: intake (and the transfer, which always spins with it) stop
+                intakePower = 0;
+                transferPower = 0;
+            }
+        } else {
+            ballSpikeActive = false;
+        }
+        // Jam protection: sustained high transfer current locks the intake + transfer off until pad 2 A.
+        double nowOc = System.nanoTime() / 1e9;
+        if (OVERCURRENT_ENABLED && !intakeLocked && transferAmps >= OVERCURRENT_AMPS) {
+            if (overSince < 0) overSince = nowOc;
+            if (nowOc - overSince >= OVERCURRENT_HOLD_SEC) intakeLocked = true;
+        } else {
+            overSince = -1;
+        }
+        if (gamepad2.a && !prevPad2A) {
+            intakeLocked = false;
+            overSince = -1;
+        }
+        prevPad2A = gamepad2.a;
+        if (intakeLocked) {
+            intakePower = 0;
+            transferPower = 0;
         }
         intake.setPower(Range.clip(intakePower, -1, 1));
         transfer.setPower(transferPower);
@@ -183,7 +252,12 @@ public class MainTeleOp extends OpMode {
                 regression.getDegreeUsed(), regression.getRSquared(), regression.describeSamples());
         telemetry.addData("Shooter RPM", "%.0f / %.0f", shooter.getRpm(), shooter.getTargetRpm());
         telemetry.addData("Battery (V)", "%.2f", shooter.getVoltage());
+        telemetry.addData("Voltage effect", regression.describeVoltageEffect());
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
+        telemetry.addData("Dip boost", shooter.isRecovering());
+        telemetry.addData("Balls counted / limit (Y resets)", "%d / %d", ballCount, BALL_LIMIT);
+        telemetry.addData("Intake LOCKED (pad 2 A re-enables)", intakeLocked);
+        telemetry.addData("Transfer current (A)", "%.2f", transfer.getCurrent(CurrentUnit.AMPS));
         telemetry.addData("Flower / Stop Servo (dpad-left / A)", "%.2f / %.2f",
                 flowerServo.getPosition(), stopServo.getPosition());
         telemetry.addData("Loop MS", "%.1f", dt * 1000);

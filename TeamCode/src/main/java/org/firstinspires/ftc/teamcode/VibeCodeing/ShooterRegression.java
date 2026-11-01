@@ -29,24 +29,40 @@ import java.util.List;
 public class ShooterRegression {
 
     // Measured shots (field inches -> flywheel RPM), recorded 26 Oct 2026. These seed the table below.
-    public static final double[] DEFAULT_DIST = {31.6, 46.1, 54.5, 66.8, 48.9, 66.3};
-    public static final double[] DEFAULT_RPM = {2900, 3200, 3200, 3300, 2815, 3300};
+    public static final double[] DEFAULT_DIST = {31.6, 46.1, 54.5, 66.8, 48.9, 66.3, 42.4, 53.0, 45.4, 48.8, 64.5};
+    public static final double[] DEFAULT_RPM = {2800, 3100, 3100, 3100, 2715, 3200, 2702, 2908, 2633, 2767, 2924};
+    public static final double[] DEFAULT_VOLT = {0, 0, 0, 0, 0, 0, 12.42, 13.0, 12.77, 12.42, 12.51};
+
+    // ---- Voltage ----
+    // The flywheel controller already scales its power for the battery, so the table should hold at any voltage.
+    // If your data shows shots still change with voltage, set VOLT_RPM_PER_VOLT (RPM added per volt above VOLT_REF).
+    public static double VOLT_RPM_PER_VOLT = 0;  // 0 = off
+    public static double VOLT_REF = 12.5;        // battery voltage the table is assumed to be for
 
     // ---- Live-tunable options ----
     public static int FIT_TYPE = 0;              // see above (0 keeps the old behaviour)
     public static double SHOT_OFFSET_RPM = 0;    // added to every prediction
 
-    // ---- Live-tunable shot table (D = distance in inches, R = RPM; D = 0 means the slot is empty) ----
-    public static double D1 = 31.6, R1 = 2800;
-    public static double D2 = 46.1, R2 = 3100;
-    public static double D3 = 54.5, R3 = 3100;
-    public static double D4 = 66.8, R4 = 3100;
-    public static double D5 = 48.9, R5 = 2715; // 27 Oct 2026, robot (40.36, 5.72) to RED CELL 2
-    public static double D6 = 66.3, R6 = 3200; // 27 Oct 2026, robot (8.61, 5.67) to RED CELL 2
-    public static double D7 = 0,    R7 = 0;
-    public static double D8 = 0,    R8 = 0;
+    // ---- Live-tunable shot table (D = distance in inches, R = RPM, V = battery volts when recorded;
+    // D = 0 means the slot is empty, V = 0 means the voltage was not recorded) ----
+    public static double D1 = 31.6, R1 = 2800, V1 = 0;
+    public static double D2 = 46.1, R2 = 3100, V2 = 0;
+    public static double D3 = 54.5, R3 = 3100, V3 = 0;
+    public static double D4 = 66.8, R4 = 3100, V4 = 0;
+    public static double D5 = 48.9, R5 = 2715, V5 = 0; // 27 Oct 2026, robot (40.36, 5.72) to RED CELL 2
+    public static double D6 = 66.3, R6 = 3200, V6 = 0; // 27 Oct 2026, robot (8.61, 5.67) to RED CELL 2
+    public static double D7 = 42.4, R7 = 2702, V7 = 12.42; // 31 Oct 2026 photo 1, robot (35.16, 15.07)
+    public static double D8 = 53.0, R8 = 2908, V8 = 13.0; // 31 Oct 2026 photo 2, robot (32.87, 4.36)
+    public static double D9 = 45.4, R9 = 2633, V9 = 12.77; // 31 Oct 2026 photo 3, robot (77.97, 12.22)
+    public static double D10 = 48.8, R10 = 2767, V10 = 12.42; // 31 Oct 2026 photo 4, robot (74.66, 6.86)
+    public static double D11 = 64.5, R11 = 2924, V11 = 12.51; // 31 Oct 2026 photo 5, robot (107.58, 13.31)
+    public static double D12 = 0, R12 = 0, V12 = 0;
+    public static double D13 = 0, R13 = 0, V13 = 0;
+    public static double D14 = 0, R14 = 0, V14 = 0;
+    public static double D15 = 0, R15 = 0, V15 = 0;
+    public static double D16 = 0, R16 = 0, V16 = 0;
 
-    private static final int SLOTS = 8;
+    private static final int SLOTS = 16;
 
     private int requestedDegree;
     private int degreeUsed = 0;
@@ -62,27 +78,43 @@ public class ShooterRegression {
 
     private static double[] slot(int i) {
         switch (i) {
-            case 0: return new double[]{D1, R1};
-            case 1: return new double[]{D2, R2};
-            case 2: return new double[]{D3, R3};
-            case 3: return new double[]{D4, R4};
-            case 4: return new double[]{D5, R5};
-            case 5: return new double[]{D6, R6};
-            case 6: return new double[]{D7, R7};
-            default: return new double[]{D8, R8};
+            case 0: return new double[]{D1, R1, V1};
+            case 1: return new double[]{D2, R2, V2};
+            case 2: return new double[]{D3, R3, V3};
+            case 3: return new double[]{D4, R4, V4};
+            case 4: return new double[]{D5, R5, V5};
+            case 5: return new double[]{D6, R6, V6};
+            case 6: return new double[]{D7, R7, V7};
+            case 7: return new double[]{D8, R8, V8};
+            case 8: return new double[]{D9, R9, V9};
+            case 9: return new double[]{D10, R10, V10};
+            case 10: return new double[]{D11, R11, V11};
+            case 11: return new double[]{D12, R12, V12};
+            case 12: return new double[]{D13, R13, V13};
+            case 13: return new double[]{D14, R14, V14};
+            case 14: return new double[]{D15, R15, V15};
+            default: return new double[]{D16, R16, V16};
         }
     }
 
-    private static void setSlot(int i, double d, double r) {
+    private static void setSlot(int i, double d, double r, double v) {
         switch (i) {
-            case 0: D1 = d; R1 = r; break;
-            case 1: D2 = d; R2 = r; break;
-            case 2: D3 = d; R3 = r; break;
-            case 3: D4 = d; R4 = r; break;
-            case 4: D5 = d; R5 = r; break;
-            case 5: D6 = d; R6 = r; break;
-            case 6: D7 = d; R7 = r; break;
-            default: D8 = d; R8 = r; break;
+            case 0: D1 = d; R1 = r; V1 = v; break;
+            case 1: D2 = d; R2 = r; V2 = v; break;
+            case 2: D3 = d; R3 = r; V3 = v; break;
+            case 3: D4 = d; R4 = r; V4 = v; break;
+            case 4: D5 = d; R5 = r; V5 = v; break;
+            case 5: D6 = d; R6 = r; V6 = v; break;
+            case 6: D7 = d; R7 = r; V7 = v; break;
+            case 7: D8 = d; R8 = r; V8 = v; break;
+            case 8: D9 = d; R9 = r; V9 = v; break;
+            case 9: D10 = d; R10 = r; V10 = v; break;
+            case 10: D11 = d; R11 = r; V11 = v; break;
+            case 11: D12 = d; R12 = r; V12 = v; break;
+            case 12: D13 = d; R13 = r; V13 = v; break;
+            case 13: D14 = d; R14 = r; V14 = v; break;
+            case 14: D15 = d; R15 = r; V15 = v; break;
+            default: D16 = d; R16 = r; V16 = v; break;
         }
     }
 
@@ -91,7 +123,7 @@ public class ShooterRegression {
         List<double[]> list = new ArrayList<>();
         for (int i = 0; i < SLOTS; i++) {
             double[] s = slot(i);
-            if (s[0] > 0 && s[1] > 0) list.add(s);
+            if (s[0] > 0 && s[1] > 0) list.add(s); // s = {distance, rpm, volts}
         }
         Collections.sort(list, new Comparator<double[]>() {
             @Override public int compare(double[] a, double[] b) { return Double.compare(a[0], b[0]); }
@@ -113,22 +145,27 @@ public class ShooterRegression {
      * nearest in distance. It then shows up in Dashboard where you can keep editing it.
      */
     public void addSample(double distance, double rpm) {
+        addSample(distance, rpm, 0);
+    }
+
+    /** Same, and remembers the battery voltage the shot was taken at (0 = unknown). */
+    public void addSample(double distance, double rpm, double volts) {
         for (int i = 0; i < SLOTS; i++) {
-            if (slot(i)[0] <= 0) { setSlot(i, distance, rpm); refit(requestedDegree); return; }
+            if (slot(i)[0] <= 0) { setSlot(i, distance, rpm, volts); refit(requestedDegree); return; }
         }
         int nearest = 0;
         for (int i = 1; i < SLOTS; i++) {
             if (Math.abs(slot(i)[0] - distance) < Math.abs(slot(nearest)[0] - distance)) nearest = i;
         }
-        setSlot(nearest, distance, rpm);
+        setSlot(nearest, distance, rpm, volts);
         refit(requestedDegree);
     }
 
     /** Puts the table back to the 4 built-in measured shots and clears the offset. */
     public void clearRecorded() {
         for (int i = 0; i < SLOTS; i++) {
-            if (i < DEFAULT_DIST.length) setSlot(i, DEFAULT_DIST[i], DEFAULT_RPM[i]);
-            else setSlot(i, 0, 0);
+            if (i < DEFAULT_DIST.length) setSlot(i, DEFAULT_DIST[i], DEFAULT_RPM[i], DEFAULT_VOLT[i]);
+            else setSlot(i, 0, 0, 0);
         }
         SHOT_OFFSET_RPM = 0;
         refit(requestedDegree);
@@ -140,8 +177,54 @@ public class ShooterRegression {
         for (double[] s : readTable()) {
             if (sb.length() > 0) sb.append(", ");
             sb.append(String.format("%.1f:%.0f", s[0], s[1]));
+            if (s[2] > 0) sb.append(String.format("@%.1fV", s[2]));
         }
         return sb.toString();
+    }
+
+    /**
+     * What the shots recorded with a battery voltage say about voltage: fits rpm = a + b*distance + c*(volts - VOLT_REF)
+     * through those rows and returns c (RPM per volt), or NaN if there are too few rows or the voltage barely varied.
+     * Estimate only: it is never applied. Copy a trusted value into VOLT_RPM_PER_VOLT yourself.
+     */
+    public double getVoltageEffectRpmPerVolt() {
+        List<double[]> v = new ArrayList<>();
+        for (double[] s : pts) if (s[2] > 0) v.add(s);
+        if (v.size() < 4) return Double.NaN;
+        double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY;
+        for (double[] s : v) { lo = Math.min(lo, s[2]); hi = Math.max(hi, s[2]); }
+        if (hi - lo < 0.3) return Double.NaN;
+        double[][] a = new double[3][4];
+        for (double[] s : v) {
+            double[] x = {1, s[0], s[2] - VOLT_REF};
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) a[i][j] += x[i] * x[j];
+                a[i][3] += x[i] * s[1];
+            }
+        }
+        for (int col = 0; col < 3; col++) {
+            int p = col;
+            for (int r = col + 1; r < 3; r++) if (Math.abs(a[r][col]) > Math.abs(a[p][col])) p = r;
+            double[] t = a[col]; a[col] = a[p]; a[p] = t;
+            if (Math.abs(a[col][col]) < 1e-9) return Double.NaN;
+            for (int r = col + 1; r < 3; r++) {
+                double f = a[r][col] / a[col][col];
+                for (int c = col; c < 4; c++) a[r][c] -= f * a[col][c];
+            }
+        }
+        double c2 = a[2][3] / a[2][2];
+        return c2;
+    }
+
+    /** One line for telemetry: the voltage estimate, and how far to trust it. */
+    public String describeVoltageEffect() {
+        int n = 0;
+        double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY;
+        for (double[] s : pts) if (s[2] > 0) { n++; lo = Math.min(lo, s[2]); hi = Math.max(hi, s[2]); }
+        double e = getVoltageEffectRpmPerVolt();
+        if (Double.isNaN(e)) return String.format("not enough voltage data yet (%d rows with volts, need 4+ over 0.3 V+)", n);
+        String trust = (n < 10 || hi - lo < 1.0) ? "weak: too few rows or too narrow a voltage range" : "ok";
+        return String.format("%+.0f RPM/V from %d rows (%.1f-%.1f V), %s", e, n, lo, hi, trust);
     }
 
     /** How far the current curve is from each point, e.g. "31.6:+12, 46.1:-30". Use this to see which point to nudge. */
@@ -156,8 +239,14 @@ public class ShooterRegression {
 
     /** Predicted RPM for a distance, plus SHOT_OFFSET_RPM, clamped to [minRpm, maxRpm]. Reads the live table every call. */
     public double predict(double distance, double minRpm, double maxRpm) {
-        refit(requestedDegree); // picks up Dashboard edits immediately (at most 8 points, very cheap)
+        return predict(distance, 0, minRpm, maxRpm);
+    }
+
+    /** Same, plus VOLT_RPM_PER_VOLT * (volts - VOLT_REF) when volts is known (> 0) and that setting is not 0. */
+    public double predict(double distance, double volts, double minRpm, double maxRpm) {
+        refit(requestedDegree); // picks up Dashboard edits immediately (at most 16 points, very cheap)
         double y = evaluate(distance) + SHOT_OFFSET_RPM;
+        if (volts > 0) y += VOLT_RPM_PER_VOLT * (volts - VOLT_REF);
         return Math.max(minRpm, Math.min(maxRpm, y));
     }
 

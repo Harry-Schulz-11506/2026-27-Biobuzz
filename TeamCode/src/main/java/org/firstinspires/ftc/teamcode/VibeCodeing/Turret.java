@@ -42,10 +42,14 @@ public class Turret extends OpMode {
     // GOAL SELECTION (alliance cell it tracks)
     // BACK toggles RED <-> BLUE, right stick button toggles CELL 1 <-> CELL 2.
     // ============================
-    public static double RED_CELL1_X = 56.0;  public static double RED_CELL1_Y = 87.0;
-    public static double RED_CELL2_X = 56.0;  public static double RED_CELL2_Y = 52.0;
-    public static double BLUE_CELL1_X = 83.0; public static double BLUE_CELL1_Y = 52.0;
-    public static double BLUE_CELL2_X = 83.0; public static double BLUE_CELL2_Y = 87.0;
+    public static double RED_CELL1_X = 56.0;
+    public static double RED_CELL1_Y = 87.0;
+    public static double RED_CELL2_X = 56.0;
+    public static double RED_CELL2_Y = 52.0;
+    public static double BLUE_CELL1_X = 83.0;
+    public static double BLUE_CELL1_Y = 52.0;
+    public static double BLUE_CELL2_X = 83.0;
+    public static double BLUE_CELL2_Y = 87.0;
 
     // ---- Auto cell swap: when the robot crosses the middle of the field it switches to the cell on its side ----
     // The two cells of each HIVE sit at different Y, so the middle line is Y = MIDLINE_Y (72 = half of 144).
@@ -82,17 +86,31 @@ public class Turret extends OpMode {
     // ============================
     // POSITION CONTROL
     // ============================
-    public static double kP = 0.7;
+    public static double kP = 1.2;
     public static double kI = 0.0;
     public static double kD = 0.0;
-    public static double MAX_POWER = 0.5;
+    public static double MAX_POWER = 0.8;
     public static double TOLERANCE = Math.toRadians(1.0);
 
     // ---- Driver 2 aim trim (gamepad2 D-pad left/right, D-pad down resets) ----
+    // ---- Shoot on the move ----
+    // The artifact keeps the robot's speed, so the turret aims at a "virtual goal": the real goal moved
+    // BACK by (robot velocity x flight time). The RPM distance uses the same virtual goal.
+    public static boolean SHOOT_ON_MOVE = true;
+    public static double SOTM_BASE_SEC = 0.25;          // flight time at zero distance (plus feed/release delay)
+    public static double SOTM_SEC_PER_INCH = 0.004;     // extra flight time per inch of distance to the goal
+    public static double SOTM_VEL_FILTER = 0.8;         // 0 = raw speed, closer to 1 = smoother (but slower to react)
+    public static double SOTM_MIN_SPEED = 4.0;          // below this speed (in/s) the lead is ignored, so a still robot aims at the real goal
+    public static double SOTM_MAX_LEAD_IN = 30.0;       // the virtual goal never moves more than this from the real one
     public static double TRIM_RATE_DEG_PER_SEC = 20.0; // how fast the trim moves while the D-pad is held
     public static double TRIM_MAX_DEG = 30.0;          // trim is limited to +/- this
     public double trimRad = 0.0;                       // added to the tracked target angle
     private long lastTrimNanos = 0;
+
+    private double velX = 0, velY = 0;          // filtered robot field velocity, inches/sec
+    private double lastPoseX, lastPoseY;
+    private long lastPoseNanos = 0;
+    private double aimX = 0, aimY = 0;          // the point the turret is actually aimed at (virtual goal)
 
     public double targetAngle = 0.0;
     public double turretPower = 0.0;
@@ -102,7 +120,7 @@ public class Turret extends OpMode {
     /**
      * true  = Turret calls telemetry.update() itself (running as its own OpMode).
      * false = the owner (MainTeleOp) calls telemetry.update() once per loop, so the turret lines
-     *         are shown together with the shooter lines instead of being overwritten.
+     * are shown together with the shooter lines instead of being overwritten.
      */
     public boolean updateTelemetry = true;
 
@@ -181,35 +199,59 @@ public class Turret extends OpMode {
     // GOAL SELECTION
     // ============================
 
-    /** Pick the goal directly: red = RED alliance, cell1 = CELL 1 (upper) instead of CELL 2. */
+    /**
+     * Pick the goal directly: red = RED alliance, cell1 = CELL 1 (upper) instead of CELL 2.
+     */
     public void selectGoal(boolean red, boolean cell1) {
         redAlliance = red;
         firstCell = cell1;
     }
 
-    public void setRedAlliance(boolean red) { redAlliance = red; }
-    public void setCell1(boolean cell1) { firstCell = cell1; }
+    public void setRedAlliance(boolean red) {
+        redAlliance = red;
+    }
 
-    /** Swap the tracked goal between the RED and the BLUE cell of the same number. */
-    public void toggleRedBlue() { redAlliance = !redAlliance; }
+    public void setCell1(boolean cell1) {
+        firstCell = cell1;
+    }
 
-    /** Swap the tracked goal between CELL 1 and CELL 2 of the same alliance. */
-    public void toggleCell() { firstCell = !firstCell; }
+    /**
+     * Swap the tracked goal between the RED and the BLUE cell of the same number.
+     */
+    public void toggleRedBlue() {
+        redAlliance = !redAlliance;
+    }
 
-    public boolean isRedAlliance() { return redAlliance; }
-    public boolean isCell1() { return firstCell; }
+    /**
+     * Swap the tracked goal between CELL 1 and CELL 2 of the same alliance.
+     */
+    public void toggleCell() {
+        firstCell = !firstCell;
+    }
+
+    public boolean isRedAlliance() {
+        return redAlliance;
+    }
+
+    public boolean isCell1() {
+        return firstCell;
+    }
 
     public String getGoalName() {
         return (redAlliance ? "RED" : "BLUE") + " CELL " + (firstCell ? "1" : "2");
     }
 
-    /** Field X of the goal currently selected (Pedro inches, Dashboard-editable above). */
+    /**
+     * Field X of the goal currently selected (Pedro inches, Dashboard-editable above).
+     */
     public double getGoalX() {
         if (redAlliance) return firstCell ? RED_CELL1_X : RED_CELL2_X;
         return firstCell ? BLUE_CELL1_X : BLUE_CELL2_X;
     }
 
-    /** Field Y of the goal currently selected (Pedro inches, Dashboard-editable above). */
+    /**
+     * Field Y of the goal currently selected (Pedro inches, Dashboard-editable above).
+     */
     public double getGoalY() {
         if (redAlliance) return firstCell ? RED_CELL1_Y : RED_CELL2_Y;
         return firstCell ? BLUE_CELL1_Y : BLUE_CELL2_Y;
@@ -239,7 +281,10 @@ public class Turret extends OpMode {
      * so a manual R3 swap sticks until the next crossing.
      */
     public void autoSelectCell(Pose pose) {
-        if (!AUTO_CELL_SWAP) { lastSide = 0; return; }
+        if (!AUTO_CELL_SWAP) {
+            lastSide = 0;
+            return;
+        }
         int side = lastSide;
         if (pose.y() > MIDLINE_Y + MIDLINE_HYSTERESIS) side = 1;
         else if (pose.y() < MIDLINE_Y - MIDLINE_HYSTERESIS) side = -1;
@@ -256,9 +301,63 @@ public class Turret extends OpMode {
         updateTurret(pose, getGoalX(), getGoalY(), trackingEnabled);
     }
 
+    /**
+     * X of the point the turret aims at: the goal moved back by the robot's velocity (shoot on the move).
+     */
+    public double getAimX() {
+        return aimX;
+    }
+
+    public double getAimY() {
+        return aimY;
+    }
+
+    public double getSpeedInPerSec() {
+        return Math.hypot(velX, velY);
+    }
+
+    private void updateVelocity(Pose pose) {
+        long nowN = System.nanoTime();
+        if (lastPoseNanos != 0) {
+            double dt = (nowN - lastPoseNanos) / 1e9;
+            if (dt > 1e-3 && dt < 0.5) {
+                double vx = (pose.x() - lastPoseX) / dt;
+                double vy = (pose.y() - lastPoseY) / dt;
+                velX = SOTM_VEL_FILTER * velX + (1 - SOTM_VEL_FILTER) * vx;
+                velY = SOTM_VEL_FILTER * velY + (1 - SOTM_VEL_FILTER) * vy;
+            }
+        }
+        lastPoseX = pose.x();
+        lastPoseY = pose.y();
+        lastPoseNanos = nowN;
+    }
+
+    /**
+     * Move the goal back by velocity x flight time (flight time grows with the distance).
+     */
+    private void computeAim(Pose pose, double goalX, double goalY) {
+        aimX = goalX;
+        aimY = goalY;
+        if (!SHOOT_ON_MOVE) return;
+        double dist = Math.hypot(goalX - pose.x(), goalY - pose.y());
+        double t = SOTM_BASE_SEC + SOTM_SEC_PER_INCH * dist;
+        if (Math.hypot(velX, velY) < SOTM_MIN_SPEED)
+            return; // standing still: no jitter from speed noise
+        double dx = -velX * t, dy = -velY * t;
+        double lead = Math.hypot(dx, dy);
+        if (lead > SOTM_MAX_LEAD_IN && lead > 1e-6) {
+            dx *= SOTM_MAX_LEAD_IN / lead;
+            dy *= SOTM_MAX_LEAD_IN / lead;
+        }
+        aimX = goalX + dx;
+        aimY = goalY + dy;
+    }
+
     public void updateTurret(Pose pose, double targetX, double targetY, boolean tracking) {
         this.trackingEnabled = tracking;
-        targetAngle = wrapToTurretRange(calculateTarget(pose, targetX, targetY) + trimRad);
+        updateVelocity(pose);
+        computeAim(pose, targetX, targetY);
+        targetAngle = wrapToTurretRange(calculateTarget(pose, aimX, aimY) + trimRad);
         double currentAngle = getTurretAngle();
         double error = targetAngle - currentAngle;
 
@@ -374,9 +473,17 @@ public class Turret extends OpMode {
         }
     }
 
-    public double getTarget() { return Math.toDegrees(targetAngle); }
-    public double getError() { return Math.toDegrees(targetAngle - getTurretAngle()); }
-    public double getPower() { return turretPower; }
+    public double getTarget() {
+        return Math.toDegrees(targetAngle);
+    }
+
+    public double getError() {
+        return Math.toDegrees(targetAngle - getTurretAngle());
+    }
+
+    public double getPower() {
+        return turretPower;
+    }
 
     public void setOpenLoopPower(double power) {
         double currentAngle = getTurretAngle();
@@ -391,4 +498,5 @@ public class Turret extends OpMode {
         trackingEnabled = false;
         if (turret != null) turret.setPower(0);
     }
+
 }
