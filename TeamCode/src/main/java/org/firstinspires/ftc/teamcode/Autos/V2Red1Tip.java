@@ -23,8 +23,9 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 @Autonomous(name = "V2 RED 1 tip", group = "Autonomous")
 public class V2Red1Tip extends LinearOpMode {
 
-    /** Added to every shot RPM in this auto only (TeleOp and the other autos are not affected). */
-    public static double RPM_OFFSET = 0;
+    /** RPM offset for each shot on its own, added to the regression RPM for that shot (this auto only). */
+    public static double SHOT_1_RPM_OFFSET = -300;
+    public static double SHOT_2_RPM_OFFSET = 0;
     /** Wait (robot stopped, flower down, intake + transfer running) at the end of a flower intake path. */
     public static long FLOWER_WAIT_MS = 1000;
     /** How long to wait for "aimed + flywheel at speed" before shooting anyway. */
@@ -77,7 +78,7 @@ public class V2Red1Tip extends LinearOpMode {
 
         // ---- 1. shootAtstart: shoot from the start pose, then drive the path ----
         stage = "shoot at start: RED 2";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_1_RPM_OFFSET);
         stage = "shootAtstart";
         drive(shootAtstartPath());
 
@@ -91,7 +92,7 @@ public class V2Red1Tip extends LinearOpMode {
         stage = "shootatend";
         drive(shootatendPath());
         stage = "shoot at end: RED 2";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_2_RPM_OFFSET);
 
         // ---- 4. path4, then the turret back to 0 deg ----
         stage = "path4";
@@ -205,13 +206,13 @@ public class V2Red1Tip extends LinearOpMode {
      * Spin up for the current distance, wait (up to READY_TIMEOUT_MS) until the turret is aimed and the
      * flywheel is at speed, then run the transfer for feedMs. Shooting does not block if it times out.
      */
-    private void score(long feedMs) {
+    private void score(long feedMs, double shotOffset) {
         // The transfer belongs to the shot, not to an earlier intake: zero it so the feed only runs
         // from shoot(), once the flywheel is at speed (GATE_FEED_ON_SPEED). Intake keeps its power.
         inShot = true;
         long shotStart = System.currentTimeMillis();
         mech.stopShoot();
-        mech.spinUpForDistance(RPM_OFFSET); // RPM for the distance we are standing at right now, minus 600
+        mech.spinUpForDistance(shotOffset); // RPM for the distance we are at, plus this shot's own offset
 
         long readyDeadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
         while (opModeIsActive() && !mech.isReadyToShoot() && System.currentTimeMillis() < readyDeadline) {

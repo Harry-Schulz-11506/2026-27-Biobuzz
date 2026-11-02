@@ -29,8 +29,11 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 @Autonomous(name = "V2 RED 2 tip", group = "Autonomous")
 public class V2Red2Tip extends LinearOpMode {
 
-    /** Added to every shot RPM in this auto only (TeleOp and the other autos are not affected). */
-    public static double RPM_OFFSET = 0;
+    /** RPM offset for each shot on its own, added to the regression RPM for that shot (this auto only). */
+    public static double SHOT_1_RPM_OFFSET = 0;
+    public static double SHOT_2_RPM_OFFSET = 0;
+    public static double SHOT_3_RPM_OFFSET = 0;
+    public static double SHOT_4_RPM_OFFSET = 0;
     /** Wait (robot stopped, flower down, intake + transfer running) at the end of a flower intake path. */
     public static long FLOWER_WAIT_MS = 1000;
     /** How long to wait for "aimed + flywheel at speed" before shooting anyway. */
@@ -39,6 +42,8 @@ public class V2Red2Tip extends LinearOpMode {
     public static long FEED_MS = 3000;
     /** Longest any one path may take: after this the auto gives up on it and moves on (5 seconds). */
     public static long PATH_TIMEOUT_MS = 5000;
+    /** Timeout for the two paths that go TO the flowers (flowerintakeatend and flowerIntakeatend). */
+    public static long FLOWER_PATH_TIMEOUT_MS = 5000;
     /** How long to wait for Pedro report a newly started path as busy. */
     public static long PICKUP_TIMEOUT_MS = 500;
     /** How long to wait for the turret to reach 0 deg (straight ahead) at the end of the auto. */
@@ -65,7 +70,7 @@ public class V2Red2Tip extends LinearOpMode {
     private final Pose point4Start = poseFactory.of(46.6509, 10.2205, 180);
     private final Pose point4 = poseFactory.of(23.5845, 47.0503, 180);
     private final Pose flowerintakeatendStart = poseFactory.of(23.5845, 47.0503, 180);
-    private final Pose flowerintakeatend = poseFactory.of(12.3186, 47.1207, 180);
+    private final Pose flowerintakeatend = poseFactory.of(15.3186, 47.1207, 180); // moved 3 in towards the middle (was x 12.3186)
     private final Pose point6 = poseFactory.of(23.8478, 47.4936, -178.1473);
     private final Pose shootatend_2Start = poseFactory.of(23.8478, 47.4936, 180);
     private final Pose shootatend_2 = poseFactory.of(62.667, 132.5875, 90);
@@ -74,7 +79,7 @@ public class V2Red2Tip extends LinearOpMode {
     private final Pose point8 = poseFactory.of(47.0631, 119.7936, 90);
     private final Pose point8Control1 = poseFactory.of(65.4626, 122.2049, 0);
     private final Pose flowerIntakeatendStart = poseFactory.of(47.0631, 119.7936, 90);
-    private final Pose flowerIntakeatend = poseFactory.of(46.9247, 129.3723, 90);
+    private final Pose flowerIntakeatend = poseFactory.of(46.9247, 126.3723, 90); // moved 3 in towards the middle (was y 129.3723)
     private final Pose point10 = poseFactory.of(46.7524, 119.9481, 88.9524);
     private final Pose shootatend_3Start = poseFactory.of(46.7524, 119.9481, 90);
     private final Pose shootatend_3 = poseFactory.of(64.7729, 132.7817, 90);
@@ -100,7 +105,7 @@ public class V2Red2Tip extends LinearOpMode {
 
         // ---- 1. shootatstart: shoot from the start pose, then drive the path ----
         stage = "shoot at start: RED 2";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_1_RPM_OFFSET);
         stage = "shootatstart";
         drive(shootatstartPath());
 
@@ -114,7 +119,7 @@ public class V2Red2Tip extends LinearOpMode {
         stage = "shootatend";
         drive(shootatendPath());
         stage = "shoot at end of shootatend: RED 2";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_2_RPM_OFFSET);
 
         // ---- 4. path4 ----
         stage = "path4";
@@ -122,7 +127,7 @@ public class V2Red2Tip extends LinearOpMode {
 
         // ---- 5. flowerintakeatend: flower intake at the end, then flower up ----
         stage = "flowerintakeatend";
-        drive(flowerintakeatendPath());
+        driveFor(FLOWER_PATH_TIMEOUT_MS, flowerintakeatendPath());
         stage = "flower intake at the end (flower already down)";
         settle(FLOWER_WAIT_MS);
 
@@ -134,7 +139,7 @@ public class V2Red2Tip extends LinearOpMode {
         stage = "shootatend_2";
         drive(shootatend_2Path(), at(0.5, () -> mech.trackGoal(true, true))); // RED 1
         stage = "shoot at end of shootatend_2: RED 1";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_3_RPM_OFFSET);
 
         // ---- 8. path8 ----
         stage = "path8";
@@ -142,7 +147,7 @@ public class V2Red2Tip extends LinearOpMode {
 
         // ---- 9. flowerIntakeatend: flower intake at the end, then flower up ----
         stage = "flowerIntakeatend";
-        drive(flowerIntakeatendPath());
+        driveFor(FLOWER_PATH_TIMEOUT_MS, flowerIntakeatendPath());
         stage = "flower intake at the end (flower already down)";
         settle(FLOWER_WAIT_MS);
 
@@ -154,7 +159,7 @@ public class V2Red2Tip extends LinearOpMode {
         stage = "shootatend_3";
         drive(shootatend_3Path());
         stage = "shoot at end of shootatend_3: RED 1";
-        score(FEED_MS);
+        score(FEED_MS, SHOT_4_RPM_OFFSET);
 
         // ---- 12. path12, then the turret back to 0 deg ----
         stage = "path12";
@@ -195,6 +200,11 @@ public class V2Red2Tip extends LinearOpMode {
      * 1 = end); use it to switch the tracked goal or move a servo partway along a path.
      */
     private void drive(Path path, At... actions) {
+        driveFor(PATH_TIMEOUT_MS, path, actions);
+    }
+
+    /** Same as drive(), with its own timeout for this one path. */
+    private void driveFor(long timeoutMs, Path path, At... actions) {
         follower.follow(path);
 
         // Give the follower one loop (up to PICKUP_TIMEOUT_MS) to report busy, so a path is never skipped.
@@ -207,7 +217,7 @@ public class V2Red2Tip extends LinearOpMode {
         boolean[] seenBelow = new boolean[actions.length];
         // completion() reads 1.0 before the path is tracked: wait to see the path below a trigger
         // point before firing that action.
-        long pathDeadline = System.currentTimeMillis() + PATH_TIMEOUT_MS;
+        long pathDeadline = System.currentTimeMillis() + timeoutMs;
         while (opModeIsActive() && follower.isBusy() && System.currentTimeMillis() < pathDeadline) {
             for (int i = 0; i < actions.length; i++) {
                 if (done[i]) continue;
@@ -268,13 +278,13 @@ public class V2Red2Tip extends LinearOpMode {
      * Spin up for the current distance, wait (up to READY_TIMEOUT_MS) until the turret is aimed and the
      * flywheel is at speed, then run the transfer for feedMs. Shooting does not block if it times out.
      */
-    private void score(long feedMs) {
+    private void score(long feedMs, double shotOffset) {
         // The transfer belongs to the shot, not to an earlier intake: zero it so the feed only runs
         // from shoot(), once the flywheel is at speed (GATE_FEED_ON_SPEED). Intake keeps its power.
         inShot = true;
         long shotStart = System.currentTimeMillis();
         mech.stopShoot();
-        mech.spinUpForDistance(RPM_OFFSET); // RPM for the distance we are standing at right now, minus 600
+        mech.spinUpForDistance(shotOffset); // RPM for the distance we are at, plus this shot's own offset
 
         long readyDeadline = System.currentTimeMillis() + READY_TIMEOUT_MS;
         while (opModeIsActive() && !mech.isReadyToShoot() && System.currentTimeMillis() < readyDeadline) {
