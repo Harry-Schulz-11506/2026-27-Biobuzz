@@ -43,7 +43,7 @@ Hardware names: `shooter, transfer, turret, intake, Fl, Fr, Bl, Br, flower, stop
 | D-pad left | Flower servo up/down |
 | BACK | Swap RED / BLUE |
 | Right stick button (R3) | Swap CELL 1 / CELL 2 |
-| Left stick button (L3) | Record current distance + RPM into the regression table |
+| Left stick button (L3) | Switch drive mode: SLOW (speed x 0.7, current strafe/spin directions, the start mode) / FAST (full speed, original strafe/spin directions) |
 
 The shooter is always spinning (there is no on/off button).
 
@@ -52,8 +52,11 @@ The shooter is always spinning (there is no on/off button).
 | Input | Action |
 |---|---|
 | A / B | Turret tracking on / off (starts OFF) |
+| X | Relocalize: reset the robot's position to the start pose (the auto's end pose, or the default start) |
 | D-pad left / right (hold) | Aim trim, counter-clockwise / clockwise |
-| D-pad down | Reset the aim trim to 0 |
+| D-pad up / down | RPM trim +100 / -100 per press (`RPM_STEP`), same as gamepad 1 D-pad up / down |
+| Y | Reset the aim trim AND the RPM trim to 0 |
+| Left stick button (L3) | Record current distance + RPM into the regression table |
 
 ## 5. Tuning in FTC Dashboard
 
@@ -64,7 +67,7 @@ Connect to the Control Hub Wi-Fi and open http://192.168.43.1:8080/dash. Add the
 Open **ShooterRegression** in the Dashboard config. It has an 8-row shot table: `D1`/`R1` ... `D8`/`R8` (distance in inches, flywheel RPM). A row with distance 0 is empty. The first four rows hold the measured shots (31.6 in 2900, 46.1 in 3200, 54.5 in 3200, 66.8 in 3300).
 
 1. Shoot from a spot. If the shot was short or long, change that row's RPM. It applies instantly, no restart.
-2. To add a new spot: drive there, adjust RPM with D-pad up/down until it scores reliably, then press **L3**. The distance and RPM go into the next empty row, where you can still edit them. If all 8 rows are full, it replaces the nearest row.
+2. To add a new spot: drive there, adjust RPM with D-pad up/down until it scores reliably, then press **L3 on gamepad 2**. The distance and RPM go into the next empty row, where you can still edit them. If all 8 rows are full, it replaces the nearest row.
 3. If every shot is off by about the same amount, change `SHOT_OFFSET_RPM` instead of editing every row.
 4. Choose how the rows become a curve with `FIT_TYPE`:
    - `0` polynomial least-squares fit (degree from `REGRESSION_DEGREE`, 1 = line, 2 = curve). Default.
@@ -80,7 +83,7 @@ Tips: shoot from several distances (short, mid, long); more rows beat a fancier 
 ### Turret aim
 
 - `Turret.kP` (P only), `MAX_POWER` and `TOLERANCE` set how it moves. Raise `kP` until it is quick without oscillating.
-- **Aim trim:** if shots land consistently left or right, hold gamepad 2 D-pad left/right to nudge the aim while tracking. `TRIM_RATE_DEG_PER_SEC` and `TRIM_MAX_DEG` set the speed and limit; D-pad down resets. If the trim you settle on is always the same, fix the cause instead: check `OFFSET_X/OFFSET_Y` (turret pivot offset), the cell coordinates and the start pose, then reset the trim.
+- **Aim trim:** if shots land consistently left or right, hold gamepad 2 D-pad left/right to nudge the aim while tracking. `TRIM_RATE_DEG_PER_SEC` sets the speed (there is no limit on the trim); Y resets. If the trim you settle on is always the same, fix the cause instead: check `OFFSET_X/OFFSET_Y` (turret pivot offset), the cell coordinates and the start pose, then reset the trim.
 - Limits are -315 to +45 degrees with a 5 degree soft margin; the target wraps into that range.
 
 ### Flywheel

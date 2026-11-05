@@ -60,8 +60,8 @@ public class AutoActions {
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
     // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
-    public static double FLOWER_UP = 1;
-    public static double FLOWER_DOWN = 0.3;
+    public static double FLOWER_UP = 0.9;
+    public static double FLOWER_DOWN = 0.2;
     public static double STOP_DOWN = 0.5;
     public static double STOP_BLOCKING = 1;
 
@@ -142,6 +142,7 @@ public class AutoActions {
     /** Same as {@link #update()} but with a pose you already have. */
     public void update(Pose pose) {
         if (regression.getRequestedDegree() != REGRESSION_DEGREE) regression.refit(REGRESSION_DEGREE);
+        if (pose != null) PoseStorage.lastPose = pose; // TeleOp starts from where the auto left the robot
 
         if (pose != null) {
             updateDistance(pose);
