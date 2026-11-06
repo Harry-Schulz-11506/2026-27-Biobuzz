@@ -13,8 +13,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
 
-//5/11/26  8:18PM
-
+//6/11/26  11:04AM
+;
 @Config
 @TeleOp(name = "Main TeleOp", group = "Main")
 public class MainTeleOp extends OpMode {
@@ -26,7 +26,7 @@ public class MainTeleOp extends OpMode {
     public static double INTAKE_TRANSFER_POWER = 1.0;
     public static boolean REQUIRE_AT_SPEED = true;
     /** After the shoot button (right bumper) is released, the intake and transfer keep running this long before they stop. */
-    public static double SHOOT_STOP_DELAY_SEC = 1.0;
+    public static double SHOOT_STOP_DELAY_SEC = 4.0;
     public static double RPM_STEP = 100;
 
     // Shooter distance regression

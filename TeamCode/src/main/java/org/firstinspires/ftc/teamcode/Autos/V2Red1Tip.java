@@ -24,7 +24,7 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 public class V2Red1Tip extends LinearOpMode {
 
     /** RPM offset for each shot on its own, added to the regression RPM for that shot (this auto only). */
-    public static double SHOT_1_RPM_OFFSET = -300;
+    public static double SHOT_1_RPM_OFFSET = -450;
     public static double SHOT_2_RPM_OFFSET = 0;
     /** Wait (robot stopped, flower down, intake + transfer running) at the end of a flower intake path. */
     public static long FLOWER_WAIT_MS = 1000;
