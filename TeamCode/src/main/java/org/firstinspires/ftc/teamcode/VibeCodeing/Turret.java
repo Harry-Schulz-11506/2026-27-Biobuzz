@@ -93,6 +93,7 @@ public class Turret extends OpMode {
     // ---- Driver 2 aim trim (gamepad2 D-pad left/right; Y resets it) ----
     public static double TRIM_RATE_DEG_PER_SEC = 20.0; // how fast the trim moves while the D-pad is held
     public static double SLOW_DRIVE_SPEED = 0.7;       // drive speed in slow mode (gamepad 1 left stick press switches modes)
+    public static double SLOW_TURN_SCALE = 0.6;        // extra multiplier on turning in slow mode only (1 = same as before, lower = less sensitive)
     public boolean isSlowDrive() { return slowDrive; }
     public double trimRad = 0.0;                       // added to the tracked target angle
     private long lastTrimNanos = 0;
@@ -316,7 +317,7 @@ public class Turret extends OpMode {
             follower.manual(
                     -gamepad1.left_stick_y * speed,
                     dirSign * gamepad1.left_stick_x * speed,
-                    dirSign * gamepad1.right_stick_x * speed
+                    dirSign * gamepad1.right_stick_x * speed * (slowDrive ? SLOW_TURN_SCALE : 1.0)
             );
             follower.update();
             Pose pose = follower.pose();
