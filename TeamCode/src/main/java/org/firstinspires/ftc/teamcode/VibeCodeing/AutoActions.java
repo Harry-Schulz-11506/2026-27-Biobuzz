@@ -129,6 +129,7 @@ public class AutoActions {
         turret.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         turret.turret.setPower(0);
         turret.zeroTicks = turret.turret.getCurrentPosition(); // turret 0 deg = straight ahead at init
+        PoseStorage.turretZeroTicks = (int) turret.zeroTicks;  // TeleOp keeps this zero, so the turret position carries over
         turret.follower = follower;
     }
 

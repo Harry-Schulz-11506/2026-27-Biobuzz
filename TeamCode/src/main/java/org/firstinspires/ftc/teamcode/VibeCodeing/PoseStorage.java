@@ -10,5 +10,11 @@ import com.pedropathing.math.Pose;
 public class PoseStorage {
     public static Pose lastPose = null;
 
-    public static void clear() { lastPose = null; }
+    /**
+     * Encoder reading that counts as turret 0 deg. The turret encoder is not reset between OpModes, so
+     * keeping this number lets TeleOp carry on from the angle the turret finished the auto at.
+     */
+    public static Integer turretZeroTicks = null;
+
+    public static void clear() { lastPose = null; turretZeroTicks = null; }
 }

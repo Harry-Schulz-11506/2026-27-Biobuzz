@@ -102,6 +102,7 @@ public class Turret extends OpMode {
     public double targetAngle = 0.0;
     public double turretPower = 0.0;
     public boolean trackingEnabled = false;
+    private boolean holdZero = false;           // true after gamepad2 B: tracking is off and the turret is driven to 0 deg and held there
     public boolean previousA = false;
     private boolean previousX = false;
     private boolean slowDrive = true;           // true = slow mode (current directions, SLOW_DRIVE_SPEED); false = fast mode (original directions, full speed)
@@ -142,7 +143,15 @@ public class Turret extends OpMode {
             turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             turret.setPower(0);
 
-            zeroTicks = turret.getCurrentPosition();
+            // The encoder is not reset between auto and TeleOp, so reuse the auto's zero: the turret then
+            // starts TeleOp at the angle the auto left it. With no stored zero it is 0 deg right here.
+            if (USE_AUTO_POSE && PoseStorage.turretZeroTicks != null) {
+                zeroTicks = PoseStorage.turretZeroTicks;
+            } else {
+                zeroTicks = turret.getCurrentPosition();
+            }
+            PoseStorage.turretZeroTicks = (int) zeroTicks;
+            holdZero = false;
         }
 
         if (telemetry != null) {
@@ -268,11 +277,13 @@ public class Turret extends OpMode {
 
     public void updateTurret(Pose pose, double targetX, double targetY, boolean tracking) {
         this.trackingEnabled = tracking;
+        if (tracking) holdZero = false;
         targetAngle = wrapToTurretRange(calculateTarget(pose, targetX, targetY) + trimRad);
+        if (!trackingEnabled && holdZero) targetAngle = 0.0; // B pressed: go to 0 deg and stay there
         double currentAngle = getTurretAngle();
         double error = targetAngle - currentAngle;
 
-        if (!trackingEnabled || turret == null) {
+        if ((!trackingEnabled && !holdZero) || turret == null) {
             turretPower = 0.0;
             if (turret != null) turret.setPower(0);
             return;
@@ -342,6 +353,7 @@ public class Turret extends OpMode {
                 previousX = x;
                 if (gamepad2.b) {
                     trackingEnabled = false;
+                    holdZero = true; // B: stop tracking and set the turret to 0 deg
                 }
             }
 
@@ -377,7 +389,10 @@ public class Turret extends OpMode {
     }
 
     public void zeroHere() {
-        if (turret != null) zeroTicks = turret.getCurrentPosition();
+        if (turret != null) {
+            zeroTicks = turret.getCurrentPosition();
+            PoseStorage.turretZeroTicks = (int) zeroTicks;
+        }
         targetAngle = 0.0;
     }
 
