@@ -1,10 +1,10 @@
-package org.firstinspires.ftc.teamcode.VibeCodeing;
+package org.firstinspires.ftc.teamcode.Regonals;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
@@ -16,7 +16,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
  * When finished: A = apply gains (live in Dashboard's "Shooter" config). Copy them into Shooter.java to keep them.
  */
 @Config
-@TeleOp(name = "AutoTune: Shooter", group = "Tuning")
+@Disabled()
 public class ShooterAutoTune extends LinearOpMode {
 
     public static double TUNE_RPM = 2200;

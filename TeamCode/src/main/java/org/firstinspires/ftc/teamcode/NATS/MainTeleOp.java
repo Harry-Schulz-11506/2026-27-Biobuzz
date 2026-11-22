@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.VibeCodeing;
+package org.firstinspires.ftc.teamcode.NATS;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
@@ -13,7 +13,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
 
-//7/11/26  6:02PM
+//6/11/26  11:04AM
 ;
 @Config
 @TeleOp(name = "Main TeleOp", group = "Main")
@@ -28,6 +28,8 @@ public class MainTeleOp extends OpMode {
     /** After the shoot button (right bumper) is released, the intake and transfer keep running this long before they stop. */
     public static double SHOOT_STOP_DELAY_SEC = 4.0;
     public static double RPM_STEP = 100;
+    /** How fast the flower moves (servo position per second) while a controller 2 bumper is held. */
+    public static double FLOWER_ADJUST_PER_SEC = 0.3;
 
     // Shooter distance regression
     public static boolean AUTO_RPM_FROM_DISTANCE = true;
@@ -45,11 +47,13 @@ public class MainTeleOp extends OpMode {
     private DcMotorEx intake, transfer;
     private Servo flowerServo, stopServo;
 
-    private double lastDistance = 0;
+    private double lastDistance = 0;   // distance to the tracked goal (telemetry only now)
+    private double lastX = 0, lastY = 0; // robot field position: what the RPM table uses
     private double rpmTrim = 0;
     private double commandedRpm = 0;
 
     private boolean flowerIsDown = false;
+    private double flowerPos = AutoActions.FLOWER_UP;   // where the flower servo is commanded (bumpers nudge it)
     private boolean prevUp, prevDown, prevLeft, prevL3;
     private boolean prevUp2, prevDown2;
     private double lastLoopTime = -1;
@@ -110,6 +114,8 @@ public class MainTeleOp extends OpMode {
         if (turret.follower != null) {
             Pose pose = turret.follower.pose();
             lastDistance = Math.hypot(pose.x() - turret.getGoalX(), pose.y() - turret.getGoalY());
+            lastX = pose.x();
+            lastY = pose.y();
         }
 
         // ---- Shooter Control (always spinning: there is no on/off toggle any more) ----
@@ -132,13 +138,13 @@ public class MainTeleOp extends OpMode {
         }
         if (regression.getRequestedDegree() != REGRESSION_DEGREE) regression.refit(REGRESSION_DEGREE);
         if (autoRpm) {
-            commandedRpm = regression.predict(lastDistance, shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmTrim;
+            commandedRpm = regression.predict(lastX, lastY, turret.getGoalX(), turret.getGoalY(), !turret.isRedAlliance(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmTrim;
             commandedRpm = Math.max(0, Math.min(MAX_AUTO_RPM, commandedRpm));
         } else {
             commandedRpm = Shooter.TARGET_RPM;
         }
-        // Controller 2 left stick press records the current distance + RPM into the shot table (controller 1's left stick switches the drive mode).
-        if (gamepad2.left_stick_button && !prevL3) { regression.addSample(lastDistance, commandedRpm, shooter.getVoltage()); }
+        // Controller 2 left stick press records the shot into the table (robot X, Y relative to the selected goal, the RPM and the battery voltage) (controller 1's left stick switches the drive mode).
+        if (gamepad2.left_stick_button && !prevL3) { regression.addSample(lastX, lastY, turret.getGoalX(), turret.getGoalY(), !turret.isRedAlliance(), commandedRpm, shooter.getVoltage()); }
         shooter.setTargetRpm(commandedRpm);
         shooter.update();
 
@@ -190,7 +196,18 @@ public class MainTeleOp extends OpMode {
         // ---- Flower Servo: controller 1 dpad-left toggles up <-> down ----
         if (gamepad1.dpad_left && !prevLeft) {
             flowerIsDown = !flowerIsDown;
-            flowerServo.setPosition(flowerIsDown ? AutoActions.FLOWER_DOWN : AutoActions.FLOWER_UP);
+            flowerPos = flowerIsDown ? AutoActions.FLOWER_DOWN : AutoActions.FLOWER_UP;
+            flowerServo.setPosition(flowerPos);
+        }
+        // Controller 2 bumpers fine-adjust the flower: right bumper moves it toward UP, left toward DOWN
+        // (held = keeps moving at FLOWER_ADJUST_PER_SEC). The dpad-left toggle still jumps to the preset.
+        double flowerDir = turret.isCornerMode() ? 0 : (gamepad2.right_bumper ? 1 : 0) - (gamepad2.left_bumper ? 1 : 0); // START held = corner buttons
+        if (flowerDir != 0) {
+            double lo = Math.min(AutoActions.FLOWER_UP, AutoActions.FLOWER_DOWN);
+            double hi = Math.max(AutoActions.FLOWER_UP, AutoActions.FLOWER_DOWN);
+            double up = Math.signum(AutoActions.FLOWER_UP - AutoActions.FLOWER_DOWN); // which way "up" is
+            flowerPos = Math.max(lo, Math.min(hi, flowerPos + flowerDir * up * FLOWER_ADJUST_PER_SEC * dt));
+            flowerServo.setPosition(flowerPos);
         }
 
         prevUp = gamepad1.dpad_up; prevDown = gamepad1.dpad_down;
@@ -198,7 +215,7 @@ public class MainTeleOp extends OpMode {
         prevL3 = gamepad2.left_stick_button;
 
         // ---- Additional Telemetry ----
-        telemetry.addData("Shot Distance (in)", "%.1f", lastDistance);
+        telemetry.addData("Shot X / Y / dist to goal (in)", "%.1f / %.1f / %.1f", lastX, lastY, lastDistance);
         telemetry.addData("RPM Fit", "deg %d, R2 %.3f, %s",
                 regression.getDegreeUsed(), regression.getRSquared(), regression.describeSamples());
         telemetry.addData("Shooter RPM", "%.0f / %.0f", shooter.getRpm(), shooter.getTargetRpm());
@@ -207,7 +224,7 @@ public class MainTeleOp extends OpMode {
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
         telemetry.addData("Dip boost", shooter.isRecovering());
         telemetry.addData("Drive mode (gamepad 1 L3)", turret.isSlowDrive() ? "SLOW (0.7, current directions)" : "FAST (full speed, original directions)");
-        telemetry.addData("Flower / Stop Servo (dpad-left / A)", "%.2f / %.2f",
+        telemetry.addData("Flower / Stop Servo (dpad-left, pad 2 bumpers / A)", "%.2f / %.2f",
                 flowerServo.getPosition(), stopServo.getPosition());
         telemetry.addData("Loop MS", "%.1f", dt * 1000);
         telemetry.update();

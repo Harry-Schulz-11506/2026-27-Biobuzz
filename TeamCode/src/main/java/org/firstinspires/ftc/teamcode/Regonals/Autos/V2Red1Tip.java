@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.Autos;
+package org.firstinspires.ftc.teamcode.Regonals.Autos;
 
 import static com.pedropathing.api.Paths.*;
 
@@ -6,10 +6,10 @@ import com.pedropathing.api.PoseFactory;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
-import org.firstinspires.ftc.teamcode.VibeCodeing.AutoActions;
+import org.firstinspires.ftc.teamcode.Regonals.AutoActions;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**
@@ -20,7 +20,7 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
  *   path4               plain drive (park), then the turret goes back to 0 deg
  * Every path gives up after PATH_TIMEOUT_MS. The stopper is open only while shooting.
  */
-@Autonomous(name = "V2 RED 1 tip", group = "Autonomous")
+@Disabled()
 public class V2Red1Tip extends LinearOpMode {
 
     /** RPM offset for each shot on its own, added to the regression RPM for that shot (this auto only). */

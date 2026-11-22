@@ -1,10 +1,10 @@
-package org.firstinspires.ftc.teamcode.VibeCodeing;
+package org.firstinspires.ftc.teamcode.Regonals.Autos;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.math.Pose;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -13,13 +13,14 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.teamcode.Regonals.PoseStorage;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**
  * Turret: Subsystem & Standalone OpMode for turret position control and tracking.
  */
 @Config
-@TeleOp(name = "Turret Tracking Subsystem", group = "Subsystems")
+@Disabled()
 public class Turret extends OpMode {
 
     // ============================

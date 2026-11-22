@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.Autos;
+package org.firstinspires.ftc.teamcode.Regonals.Autos;
 
 import static com.pedropathing.api.Paths.*;
 
@@ -9,7 +9,7 @@ import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
-import org.firstinspires.ftc.teamcode.VibeCodeing.AutoActions;
+import org.firstinspires.ftc.teamcode.Regonals.AutoActions;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**

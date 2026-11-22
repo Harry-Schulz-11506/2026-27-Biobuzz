@@ -1,0 +1,156 @@
+NATS - IVY COMMANDS
+===================
+Copy these into your own auto. They are the commands from the NATS auto, without the paths or the
+OpMode. Needs: implementation 'com.pedropathing.ivy:pedro:1.1.1'
+
+Fields you need in the OpMode:
+    private Follower follower;
+    private AutoActions mech;                 // NATS.AutoActions (turret, shooter, intake, pivot)
+    private TipDetector.Level lastKnownLevel = TipDetector.Level.UNKNOWN;
+
+Imports:
+    import static com.pedropathing.ivy.commands.Commands.*;     // instant, waitMs, waitUntil, lazy
+    import static com.pedropathing.ivy.groups.Groups.*;         // sequential, parallel
+    import static com.pedropathing.ivy.pedro.PedroCommands.*;   // follow, hold
+    import com.pedropathing.ivy.Command;
+    import com.pedropathing.ivy.Scheduler;
+
+
+-------------------------------------------------------------------
+1. DRIVE A PATH (gives up after PATH_TIMEOUT_MS)
+-------------------------------------------------------------------
+    drive(path)
+
+    private Command drive(Path path) {
+        return withTimeout(follow(follower, path), PATH_TIMEOUT_MS);
+    }
+
+    Hold a spot instead:   hold(follower)   or   hold(follower, pose)
+
+
+-------------------------------------------------------------------
+2. TIMEOUT (builds the clock when the command starts)
+-------------------------------------------------------------------
+    private Command withTimeout(Command c, long ms) {
+        return lazy(() -> {
+            long end = System.currentTimeMillis() + ms;
+            return c.until(() -> System.currentTimeMillis() >= end);
+        });
+    }
+
+
+-------------------------------------------------------------------
+3. INTAKE WHILE DRIVING (pivot down, intake + transfer on, both off at the end)
+-------------------------------------------------------------------
+    intakePath(path)
+
+    private Command intakePath(Path path) {
+        return sequential(
+                parallel(
+                        drive(path),
+                        instant(() -> {
+                            mech.pivotDown();
+                            mech.intakeInWithTransfer();
+                        })
+                ),
+                instant(() -> {
+                    mech.intakeStop();
+                    mech.pivotUp();
+                })
+        );
+    }
+
+
+-------------------------------------------------------------------
+4. SHOOT (spin up, wait until aimed + at speed, feed, stop)
+-------------------------------------------------------------------
+    shoot(rpmOffset)          // rpmOffset: added to the table RPM for this shot (0 = none)
+
+    private Command shoot(double rpmOffset) {
+        return sequential(
+                instant(() -> {
+                    mech.stopShoot();
+                    mech.spinUpForDistance(rpmOffset);      // RPM from the X, Y table at the current pose
+                }),
+                withTimeout(waitUntil(() -> mech.isReadyToShoot()), READY_TIMEOUT_MS),
+                instant(() -> {
+                    if (mech.isReadyToShoot()) mech.shoot(); else mech.shootNow();   // timed out: feed anyway
+                }),
+                waitMs(FEED_MS),
+                instant(() -> {
+                    mech.stopShoot();
+                    mech.intakeStop();
+                })
+        );
+    }
+
+
+-------------------------------------------------------------------
+5. SIMPLE ONE-LINERS
+-------------------------------------------------------------------
+    pivot up / down / mid     instant(() -> mech.pivotUp())   instant(() -> mech.pivotDown())   instant(() -> mech.pivotMid())
+    track a goal              instant(() -> mech.trackGoal(true, false))     // (red?, cell1?)  -> RED CELL 2
+    turret to 0 deg           instant(() -> mech.aimStraightAhead())
+    flower                    instant(() -> mech.flowerDown())   instant(() -> mech.flowerUp())
+    wait                      waitMs(500)
+    wait for something        waitUntil(() -> mech.isAimed())
+    do things together        parallel(drive(path), instant(() -> mech.spinUp(3000)))
+    one after another         sequential(a, b, c)
+
+
+-------------------------------------------------------------------
+6. TIP CHECK -> SECOND CYCLE (HuskyLens)
+-------------------------------------------------------------------
+    The tip is UP at 40 in or higher, DOWN under 30 in, UNKNOWN in between / not seen.
+    RobotConfig.SECOND_CYCLE_WHEN_UP says which one means "do another cycle" (true = UP).
+    RobotConfig.SECOND_CYCLE_IF_UNKNOWN says what to do when it could not tell.
+
+    Keep the last reading every loop (it still works after the tag leaves the picture):
+        TipDetector tip = mech.getTipDetector();
+        if (tip != null && tip.getLevel() != TipDetector.Level.UNKNOWN) lastKnownLevel = tip.getLevel();
+
+    Decide when cycle 1 is done:
+        private boolean secondCycleNeeded() {
+            if (lastKnownLevel == TipDetector.Level.UNKNOWN) return RobotConfig.SECOND_CYCLE_IF_UNKNOWN;
+            return (lastKnownLevel == TipDetector.Level.UP) == RobotConfig.SECOND_CYCLE_WHEN_UP;
+        }
+
+    Put it in the sequence (lazy = decided when it starts, not when the auto is built):
+        lazy(() -> secondCycleNeeded() ? secondCycle() : instant(() -> { }))
+
+    private Command secondCycle() {
+        return sequential(
+                drive(pathBackToPickup),
+                intakePath(pickupPath),
+                drive(pathBackToShoot),
+                shoot(0)
+        );
+    }
+
+
+-------------------------------------------------------------------
+7. THE LOOP (LinearOpMode)
+-------------------------------------------------------------------
+        Scheduler.reset();                       // Ivy's Scheduler is static: clear the last OpMode's commands
+        follower = Constants.create(hardwareMap);
+        follower.setPose(start);
+        follower.update();
+        mech = new AutoActions(hardwareMap, follower);   // turret pointing straight ahead at INIT
+        mech.trackGoal(true, false);
+
+        Command auto = sequential( ... );        // your commands, in order
+
+        waitForStart();
+        Scheduler.schedule(auto);
+
+        while (opModeIsActive() && Scheduler.isScheduled(auto)) {
+            Scheduler.execute();
+            // if the robot does not move: follower.update();   (Ivy's follow() should already do it)
+            mech.update();                       // turret + HuskyLens aim, flywheel PID, feed
+            // keep lastKnownLevel up to date here (see 6)
+        }
+        mech.stopAll();
+        while (opModeIsActive()) { Scheduler.execute(); mech.update(); }
+
+    Auto timing settings (your own @Config fields): PATH_TIMEOUT_MS = 5000, READY_TIMEOUT_MS = 2500,
+    FEED_MS = 3000.
