@@ -89,8 +89,9 @@ public class Turret extends OpMode {
     // POSITION CONTROL
     // ============================
     public static double kP = RobotConfig.TURRET_kP;
-    public static double kI = 0.0;
+    public static double kI = 0.0;   // filled in by TurretAutoTune (it tunes in ticks, then converts)
     public static double kD = 0.0;
+    public static double I_LIMIT_POWER = 0.25; // the integral term may never ask for more than this
     public static double MAX_POWER = RobotConfig.TURRET_MAX_POWER;
     public static double TOLERANCE = Math.toRadians(RobotConfig.TURRET_TOLERANCE_DEG);
 
@@ -101,6 +102,9 @@ public class Turret extends OpMode {
     public boolean isSlowDrive() { return slowDrive; }
     public double trimRad = 0.0;                       // added to the tracked target angle
     private long lastTrimNanos = 0;
+    private double integral = 0.0;              // kI accumulator, in rad*s (stays 0 unless kI != 0)
+    private double lastAngleForD = Double.NaN;  // previous angle, for the kD term
+    private double lastPidTime = -1;            // seconds, for dt
     private Pose startPose = new Pose(START_X, START_Y, START_HEADING); // where this TeleOp started (auto end pose or the default)
 
     public double targetAngle = 0.0;
@@ -305,15 +309,38 @@ public class Turret extends OpMode {
             targetAngle = wrapToTurretRange(targetAngle + Range.clip(diff, -maxDiff, maxDiff));
         }
         double currentAngle = getTurretAngle();
-        double error = targetAngle - currentAngle;
+        // Shortest way round: a whole circle is allowed, so a raw difference can jump by 2 pi.
+        double error = Math.atan2(Math.sin(targetAngle - currentAngle), Math.cos(targetAngle - currentAngle));
 
         if ((!trackingEnabled && !holdZero) || turret == null) {
             turretPower = 0.0;
+            integral = 0.0;
+            lastAngleForD = Double.NaN;
+            lastPidTime = -1;
             if (turret != null) turret.setPower(0);
             return;
         }
 
-        double power = Range.clip(kP * error, -MAX_POWER, MAX_POWER);
+        double now = System.nanoTime() / 1e9;
+        double dt = (lastPidTime < 0) ? 0 : Math.min(now - lastPidTime, 0.1);
+        lastPidTime = now;
+
+        // kI and kD are 0 by default, so this is still a plain P controller until TurretAutoTune
+        // writes gains into kP / kI / kD.
+        if (kI != 0) {
+            integral += error * dt;
+            double limit = I_LIMIT_POWER / Math.abs(kI);
+            integral = Range.clip(integral, -limit, limit);
+        } else {
+            integral = 0;
+        }
+        double derivative = 0;
+        if (kD != 0 && dt > 1e-4 && !Double.isNaN(lastAngleForD)) {
+            derivative = (currentAngle - lastAngleForD) / dt;
+        }
+        lastAngleForD = currentAngle;
+
+        double power = Range.clip(kP * error + kI * integral - kD * derivative, -MAX_POWER, MAX_POWER);
 
         if (Math.abs(error) < TOLERANCE) {
             power = 0.0;

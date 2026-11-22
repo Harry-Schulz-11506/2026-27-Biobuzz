@@ -206,6 +206,12 @@ public class Shooter {
         motor.setPower(lastPower);
     }
 
+    /** Signed open-loop power for the relay auto-tuner: negative values reverse the flywheel. */
+    public void setOpenLoopPowerSigned(double power) {
+        lastPower = Range.clip(power, -1, 1);
+        motor.setPower(lastPower);
+    }
+
     public void stop() {
         targetRpm = 0;
         lastPower = 0;

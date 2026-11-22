@@ -56,8 +56,9 @@ public class RobotConfig {
     public static double TURRET_MAX_POWER = 0.8;
     public static double TURRET_kP = 1.2;          // TODO re-tune: the ratio changed, start lower if it oscillates
     public static double TURRET_TOLERANCE_DEG = 1.0;
-    public static double TURRET_MIN_ANGLE_DEG = -315.0; // TODO re-check the limits after the rebuild
-    public static double TURRET_MAX_ANGLE_DEG = 45.0;
+    // The turret turns 180 degrees each way from its zero (360 total), so 0 is the middle of travel.
+    public static double TURRET_MIN_ANGLE_DEG = -180.0;
+    public static double TURRET_MAX_ANGLE_DEG = 180.0;
     public static double TURRET_LIMIT_MARGIN_DEG = 5.0;
     public static double TRIM_RATE_DEG_PER_SEC = 20.0;
 
