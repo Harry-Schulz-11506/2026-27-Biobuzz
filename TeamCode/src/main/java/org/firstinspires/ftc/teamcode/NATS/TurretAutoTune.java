@@ -23,7 +23,7 @@ import java.util.List;
  * All settings live in {@link TuningConfig} (Dashboard: "TuningConfig"), in degrees from where the
  * turret sits when you press START:
  *
- *  1. Direction probe: 0.25 s of +0.2 power, to learn which way the encoder counts (so the relay can
+ *  1. Direction probe: 0.25 s of +0.5 power, to learn which way the encoder counts (so the relay can
  *     push both ways without you having to guess).
  *  2. Relay test: RelayAutoTuner swings the turret around TURRET_TARGET_OFFSET_DEG until it has
  *     TURRET_CYCLES_TO_COLLECT clean cycles; Ku / Tu come out of it.
@@ -110,21 +110,24 @@ public class TurretAutoTune extends LinearOpMode {
     // Direction probe
     // ---------------------------------------------------------------------
 
-    /** A short pulse at +0.2 power: does the encoder count go up or down? */
+    /** Power of the direction probe: high enough to break the turret free of friction and its gearing. */
+    private static final double PROBE_POWER = 0.5;
+
+    /** A short pulse at +PROBE_POWER: does the encoder count go up or down? */
     private boolean probeDirection() {
         long before = motor.getCurrentPosition();
         ElapsedTime clock = new ElapsedTime();
 
         while (opModeIsActive() && clock.seconds() < 0.25) {
-            motor.setPower(0.2);
+            motor.setPower(PROBE_POWER);
         }
         motor.setPower(0);
         sleep(200);
 
         long delta = motor.getCurrentPosition() - before;
         if (Math.abs(delta) < 0.5 * ticksPerDegree()) {
-            failure = "The turret barely moved at 0.2 power. Check the motor and encoder, "
-                    + "or move the turret off a hard stop.";
+            failure = String.format("The turret barely moved at %.2f power. Check the motor and encoder, "
+                    + "or move the turret off a hard stop.", PROBE_POWER);
             return false;
         }
         direction = delta > 0 ? 1 : -1;

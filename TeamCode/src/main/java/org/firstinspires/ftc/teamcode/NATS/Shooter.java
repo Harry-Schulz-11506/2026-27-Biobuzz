@@ -59,7 +59,7 @@ public class Shooter {
     public static double AT_SPEED_TOLERANCE_RPM = 25;
     public static double AT_SPEED_HOLD_SEC = 0.25;
     public static double VELOCITY_FILTER = 0.6;  // 0 = no filtering, closer to 1 = heavier filtering
-    public static boolean REVERSED = true;       // read at init(); flip if the flywheel spins the wrong way
+    public static boolean REVERSED = false;      // read at init(); flip if the flywheel spins the wrong way
 
     private DcMotorEx motor;
     private VoltageSensor voltageSensor;

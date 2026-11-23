@@ -16,10 +16,10 @@ public class RobotConfig {
     // 1. HARDWARE CONFIG NAMES  (must match the Robot Configuration on the Control Hub exactly)
     // =====================================================================
     // Drive + odometry names live in pedro/Constants.java: fl, fr, bl, br and "pinpoint".
-    public static final String DRIVE_FRONT_LEFT  = "fl";
-    public static final String DRIVE_FRONT_RIGHT = "fr";
-    public static final String DRIVE_BACK_LEFT   = "bl";
-    public static final String DRIVE_BACK_RIGHT  = "br";
+    public static final String DRIVE_FRONT_LEFT  = "FL";
+    public static final String DRIVE_FRONT_RIGHT = "FR";
+    public static final String DRIVE_BACK_LEFT   = "BL";
+    public static final String DRIVE_BACK_RIGHT  = "BR";
     public static final String PINPOINT          = "pinpoint";
 
     public static final String TURRET_MOTOR      = "turret";
@@ -27,16 +27,16 @@ public class RobotConfig {
 
     // Intake + transfer are now driven by 2 motors in total.
     public static final String INTAKE_MOTOR_1    = "intake";     // TODO name of the first intake/transfer motor
-    public static final String INTAKE_MOTOR_2    = "transfer";   // TODO name of the second intake/transfer motor
+    public static final String INTAKE_MOTOR_2    = "intake2";   // TODO name of the second intake/transfer motor
 
     // The intake pivots on 2 servos that move together.
-    public static final String PIVOT_SERVO_LEFT  = "pivotL";     // TODO
-    public static final String PIVOT_SERVO_RIGHT = "pivotR";     // TODO
+    public static final String PIVOT_SERVO_LEFT  = "intakeP";     // TODO
+    public static final String PIVOT_SERVO_RIGHT = "intakeP2";     // TODO
 
     public static final String FLOWER_SERVO      = "flower";     // TODO delete if the flower servo is gone
     public static final String STOP_SERVO        = "stop";       // TODO delete if the stop servo is gone
 
-    public static final String HUSKYLENS         = "huskylens";  // TODO name of the HuskyLens (I2C) on the turret
+    public static final String HUSKYLENS         = "HuskyLens";  // TODO name of the HuskyLens (I2C) on the turret
 
     // =====================================================================
     // 2. SPEEDS / POWERS
@@ -88,8 +88,8 @@ public class RobotConfig {
 
     public static double FLOWER_UP   = 0.9;   // carried over from AutoActions
     public static double FLOWER_DOWN = 0.2;
-    public static double STOP_DOWN     = 0.5; // open: artifacts pass
-    public static double STOP_BLOCKING = 1.0; // closed: artifacts held back
+    public static double STOP_DOWN     = 0; // open: artifacts pass
+    public static double STOP_BLOCKING = 0.3; // closed: artifacts held back
     public static double FLOWER_ADJUST_PER_SEC = 0.3; // controller 2 bumpers
 
     // =====================================================================
