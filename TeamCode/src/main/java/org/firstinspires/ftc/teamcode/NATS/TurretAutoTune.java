@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Turret position tuner, built on FTC-AutoTune v1.4.3 (https://ftcautotune.dev).
  *
- * All settings live in {@link TuningConfig} (Dashboard: "TuningConfig"), in degrees from where the
+ * All settings live in RobotConfig (Dashboard: "RobotConfig", section 11), in degrees from where the
  * turret sits when you press START:
  *
  *  1. Direction probe: 0.25 s of +0.5 power, to learn which way the encoder counts (so the relay can
@@ -28,7 +28,7 @@ import java.util.List;
  *  2. Relay test: RelayAutoTuner swings the turret around TURRET_TARGET_OFFSET_DEG until it has
  *     TURRET_CYCLES_TO_COLLECT clean cycles; Ku / Tu come out of it.
  *  3. Results: six candidates from ZieglerNicholsCalculator. Hold A to live-test one, D-pad up/down to
- *     pick another, B to write it into Turret (kP, kI, kD).
+ *     pick another, B to write it into RobotConfig.TURRET_kP / _kI / _kD.
  *
  * Put the turret in the MIDDLE of its travel first: the test moves TURRET_TARGET_OFFSET_DEG one way
  * and oscillates around that point. TURRET_MAX_EXCURSION_DEG is a hard stop on how far it may move.
@@ -54,16 +54,16 @@ public class TurretAutoTune extends LinearOpMode {
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
         motor = hardwareMap.get(DcMotorEx.class, RobotConfig.TURRET_MOTOR);
-        motor.setDirection(DcMotorSimple.Direction.FORWARD);
+        motor.setDirection(RobotConfig.TURRET_MOTOR_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         motor.setPower(0);
 
         telemetry.addLine("FTC-AutoTune v1.4.3: turret position PID");
-        telemetry.addData("offset", "%.0f deg", TuningConfig.TURRET_TARGET_OFFSET_DEG);
+        telemetry.addData("offset", "%.0f deg", RobotConfig.TUNE_TURRET_TARGET_OFFSET_DEG);
         telemetry.addData("relay", "+/- %.2f power, %.1f deg deadband",
-                TuningConfig.TURRET_RELAY_AMPLITUDE, TuningConfig.TURRET_HYSTERESIS_DEG);
-        telemetry.addData("candidates", TuningConfig.TURRET_TUNE_INTEGRAL ? "PID family" : "PD family (kI = 0)");
+                RobotConfig.TUNE_TURRET_RELAY_AMPLITUDE, RobotConfig.TUNE_TURRET_HYSTERESIS_DEG);
+        telemetry.addData("candidates", RobotConfig.TUNE_TURRET_TUNE_INTEGRAL ? "PID family" : "PD family (kI = 0)");
         telemetry.addLine("Centre the turret in its travel. START to tune, B to abort.");
         telemetry.update();
 
@@ -94,7 +94,7 @@ public class TurretAutoTune extends LinearOpMode {
 
     /** Tick value the relay oscillates around. */
     private long targetTicks() {
-        return startTicks + Math.round(TuningConfig.TURRET_TARGET_OFFSET_DEG * ticksPerDegree());
+        return startTicks + Math.round(RobotConfig.TUNE_TURRET_TARGET_OFFSET_DEG * ticksPerDegree());
     }
 
     /** Degrees moved since START, in the encoder's own direction. */
@@ -103,7 +103,7 @@ public class TurretAutoTune extends LinearOpMode {
     }
 
     private boolean withinExcursion(long ticks) {
-        return Math.abs(degreesFromStart(ticks)) <= Math.abs(TuningConfig.TURRET_MAX_EXCURSION_DEG);
+        return Math.abs(degreesFromStart(ticks)) <= Math.abs(RobotConfig.TUNE_TURRET_MAX_EXCURSION_DEG);
     }
 
     // ---------------------------------------------------------------------
@@ -111,15 +111,14 @@ public class TurretAutoTune extends LinearOpMode {
     // ---------------------------------------------------------------------
 
     /** Power of the direction probe: high enough to break the turret free of friction and its gearing. */
-    private static final double PROBE_POWER = 0.5;
 
-    /** A short pulse at +PROBE_POWER: does the encoder count go up or down? */
+    /** A short pulse at +RobotConfig.TUNE_TURRET_PROBE_POWER: does the encoder count go up or down? */
     private boolean probeDirection() {
         long before = motor.getCurrentPosition();
         ElapsedTime clock = new ElapsedTime();
 
         while (opModeIsActive() && clock.seconds() < 0.25) {
-            motor.setPower(PROBE_POWER);
+            motor.setPower(RobotConfig.TUNE_TURRET_PROBE_POWER);
         }
         motor.setPower(0);
         sleep(200);
@@ -127,7 +126,7 @@ public class TurretAutoTune extends LinearOpMode {
         long delta = motor.getCurrentPosition() - before;
         if (Math.abs(delta) < 0.5 * ticksPerDegree()) {
             failure = String.format("The turret barely moved at %.2f power. Check the motor and encoder, "
-                    + "or move the turret off a hard stop.", PROBE_POWER);
+                    + "or move the turret off a hard stop.", RobotConfig.TUNE_TURRET_PROBE_POWER);
             return false;
         }
         direction = delta > 0 ? 1 : -1;
@@ -139,15 +138,15 @@ public class TurretAutoTune extends LinearOpMode {
     // ---------------------------------------------------------------------
 
     private boolean relayTest() {
-        double amplitude = Math.min(TuningConfig.TURRET_RELAY_AMPLITUDE, maxPower());
-        double hysteresisTicks = Math.abs(TuningConfig.TURRET_HYSTERESIS_DEG) * ticksPerDegree();
+        double amplitude = Math.min(RobotConfig.TUNE_TURRET_RELAY_AMPLITUDE, maxPower());
+        double hysteresisTicks = Math.abs(RobotConfig.TUNE_TURRET_HYSTERESIS_DEG) * ticksPerDegree();
         long target = targetTicks();
 
         RelayAutoTuner tuner = new RelayAutoTuner(target, amplitude, hysteresisTicks,
-                TuningConfig.TURRET_CYCLES_TO_COLLECT, TuningConfig.TURRET_CYCLES_TO_IGNORE);
+                RobotConfig.TUNE_TURRET_CYCLES_TO_COLLECT, RobotConfig.TUNE_TURRET_CYCLES_TO_IGNORE);
 
         ElapsedTime clock = new ElapsedTime();
-        int totalCycles = TuningConfig.TURRET_CYCLES_TO_COLLECT + TuningConfig.TURRET_CYCLES_TO_IGNORE;
+        int totalCycles = RobotConfig.TUNE_TURRET_CYCLES_TO_COLLECT + RobotConfig.TUNE_TURRET_CYCLES_TO_IGNORE;
 
         while (opModeIsActive() && !tuner.isFinished()) {
             long ticks = motor.getCurrentPosition();
@@ -158,7 +157,7 @@ public class TurretAutoTune extends LinearOpMode {
             }
             if (!withinExcursion(ticks)) {
                 failure = String.format("Stopped: the turret moved more than TURRET_MAX_EXCURSION_DEG (%.0f).",
-                        TuningConfig.TURRET_MAX_EXCURSION_DEG);
+                        RobotConfig.TUNE_TURRET_MAX_EXCURSION_DEG);
                 break;
             }
 
@@ -168,12 +167,12 @@ public class TurretAutoTune extends LinearOpMode {
 
             telemetry.addLine("Relay test (Ziegler-Nichols)");
             telemetry.addData("moved from start", "%.1f deg", degreesFromStart(ticks));
-            telemetry.addData("target from start", "%.1f deg", TuningConfig.TURRET_TARGET_OFFSET_DEG);
+            telemetry.addData("target from start", "%.1f deg", RobotConfig.TUNE_TURRET_TARGET_OFFSET_DEG);
             telemetry.addData("cycles", "%d / %d", tuner.cyclesCollected(), totalCycles);
             telemetry.addData("power", "%.2f", output);
             telemetry.update();
 
-            if (clock.seconds() > TuningConfig.TURRET_TIMEOUT_S) {
+            if (clock.seconds() > RobotConfig.TUNE_TURRET_TIMEOUT_S) {
                 failure = "TIMED OUT: no stable oscillation. Raise TURRET_RELAY_AMPLITUDE (try 0.45) "
                         + "or check that the turret turns freely.";
                 break;
@@ -188,7 +187,7 @@ public class TurretAutoTune extends LinearOpMode {
             failure = "The relay test saw no usable oscillation amplitude. Raise TURRET_RELAY_AMPLITUDE.";
             return false;
         }
-        candidates = ZieglerNicholsCalculator.computeCandidates(relayResult, 0.0, TuningConfig.TURRET_TUNE_INTEGRAL);
+        candidates = ZieglerNicholsCalculator.computeCandidates(relayResult, 0.0, RobotConfig.TUNE_TURRET_TUNE_INTEGRAL);
         if (candidates == null || candidates.isEmpty()) {
             failure = "ZieglerNicholsCalculator returned no candidates.";
             return false;
@@ -204,7 +203,7 @@ public class TurretAutoTune extends LinearOpMode {
     // ---------------------------------------------------------------------
 
     private void resultsLoop() {
-        int selected = Math.max(0, Math.min(candidates.size() - 1, TuningConfig.TURRET_LIVE_CANDIDATE));
+        int selected = Math.max(0, Math.min(candidates.size() - 1, RobotConfig.TUNE_TURRET_LIVE_CANDIDATE));
         long target = targetTicks();
         PIDFController live = null;
         int liveIndex = -1;
@@ -242,11 +241,11 @@ public class TurretAutoTune extends LinearOpMode {
             boolean b = gamepad1.b;
             if (b && !previousB) {
                 double toRadians = ticksPerRadian();
-                Turret.kP = gains.kP * toRadians;
-                Turret.kI = gains.kI * toRadians;
-                Turret.kD = gains.kD * toRadians;
+                RobotConfig.TURRET_kP = gains.kP * toRadians;
+                RobotConfig.TURRET_kI = gains.kI * toRadians;
+                RobotConfig.TURRET_kD = gains.kD * toRadians;
                 // Positive power must raise the angle Turret reports, or its P loop drives the wrong way.
-                Turret.ENCODER_SIGN = direction;
+                RobotConfig.TURRET_ENCODER_SIGN = direction;
                 applied = gains.label;
             }
             previousB = b;

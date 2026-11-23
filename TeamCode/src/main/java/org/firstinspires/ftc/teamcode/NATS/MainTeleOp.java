@@ -19,25 +19,6 @@ import com.qualcomm.robotcore.util.Range;
 @TeleOp(name = "Main TeleOp", group = "Main")
 public class MainTeleOp extends OpMode {
 
-    // ---- Dashboard Configuration ----
-    public static double INTAKE_POWER = 1.0;
-    public static double TRANSFER_POWER = 1.0;
-    public static boolean TRANSFER_WITH_INTAKE = true;
-    public static double INTAKE_TRANSFER_POWER = 1.0;
-    public static boolean REQUIRE_AT_SPEED = true;
-    /** After the shoot button (right bumper) is released, the intake and transfer keep running this long before they stop. */
-    public static double SHOOT_STOP_DELAY_SEC = 4.0;
-    public static double RPM_STEP = 100;
-    /** How fast the flower moves (servo position per second) while a controller 2 bumper is held. */
-    public static double FLOWER_ADJUST_PER_SEC = 0.3;
-
-    // Shooter distance regression
-    public static boolean AUTO_RPM_FROM_DISTANCE = true;
-    // 1 = straight line through the measured shots (safe outside 31-67 in).
-    // 2 = curve, fits the measured band tighter but turns back down past about 70 in.
-    public static int REGRESSION_DEGREE = 1;
-    public static double MIN_AUTO_RPM = 1000;
-    public static double MAX_AUTO_RPM = 3300;
 
     private Turret turret;
     private Shooter shooter;
@@ -53,7 +34,7 @@ public class MainTeleOp extends OpMode {
     private double commandedRpm = 0;
 
     private boolean flowerIsDown = false;
-    private double flowerPos = AutoActions.FLOWER_UP;   // where the flower servo is commanded (bumpers nudge it)
+    private double flowerPos = RobotConfig.FLOWER_UP;   // where the flower servo is commanded (bumpers nudge it)
     private boolean prevUp, prevDown, prevLeft, prevL3;
     private boolean prevUp2, prevDown2;
     private double lastLoopTime = -1;
@@ -72,24 +53,24 @@ public class MainTeleOp extends OpMode {
 
         shooter = new Shooter();
         shooter.init(hardwareMap);
-        regression = new ShooterRegression(REGRESSION_DEGREE);
+        regression = new ShooterRegression(RobotConfig.REGRESSION_DEGREE);
 
         intake = hardwareMap.get(DcMotorEx.class, "intake");
         transfer = hardwareMap.get(DcMotorEx.class, "transfer");
-        intake.setDirection(DcMotorSimple.Direction.REVERSE);
-        transfer.setDirection(DcMotorSimple.Direction.REVERSE);
+        intake.setDirection(RobotConfig.INTAKE_MOTOR_1_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        transfer.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         transfer.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         transfer.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // Servos hold their last position, so start them at their rest state: flower up, stop
-        // blocking (0 is the open position, 0.5 holds the artifacts). The positions live in
+        // blocking (0 is the open position, 0.5 holds the pollen). The positions live in
         // AutoActions so TeleOp and auto cannot drift apart.
         flowerServo = hardwareMap.get(Servo.class, "flower");
         stopServo = hardwareMap.get(Servo.class, "stop");
-        flowerServo.setPosition(AutoActions.FLOWER_UP);
-        stopServo.setPosition(AutoActions.STOP_BLOCKING);
+        flowerServo.setPosition(RobotConfig.FLOWER_UP);
+        stopServo.setPosition(RobotConfig.STOP_BLOCKING);
 
         telemetry.addLine("Main TeleOp Initialized.");
         telemetry.update();
@@ -119,94 +100,89 @@ public class MainTeleOp extends OpMode {
         }
 
         // ---- Shooter Control (always spinning: there is no on/off toggle any more) ----
-        boolean autoRpm = AUTO_RPM_FROM_DISTANCE;
+        boolean autoRpm = RobotConfig.AUTO_RPM_FROM_DISTANCE;
         // Controller 2: D-pad up / down adjust the RPM, Y resets the RPM trim (the turret trim resets on the same press).
         boolean up2 = gamepad2.dpad_up, down2 = gamepad2.dpad_down;
         if (up2 && !prevUp2) {
-            if (autoRpm) rpmTrim += RPM_STEP; else Shooter.TARGET_RPM += RPM_STEP;
+            if (autoRpm) rpmTrim += RobotConfig.RPM_STEP; else RobotConfig.SHOOTER_TARGET_RPM += RobotConfig.RPM_STEP;
         }
         if (down2 && !prevDown2) {
-            if (autoRpm) rpmTrim -= RPM_STEP; else Shooter.TARGET_RPM = Math.max(0, Shooter.TARGET_RPM - RPM_STEP);
+            if (autoRpm) rpmTrim -= RobotConfig.RPM_STEP; else RobotConfig.SHOOTER_TARGET_RPM = Math.max(0, RobotConfig.SHOOTER_TARGET_RPM - RobotConfig.RPM_STEP);
         }
         prevUp2 = up2; prevDown2 = down2;
         if (gamepad2.y) rpmTrim = 0;
         if (gamepad1.dpad_up && !prevUp) {
-            if (autoRpm) rpmTrim += RPM_STEP; else Shooter.TARGET_RPM += RPM_STEP;
+            if (autoRpm) rpmTrim += RobotConfig.RPM_STEP; else RobotConfig.SHOOTER_TARGET_RPM += RobotConfig.RPM_STEP;
         }
         if (gamepad1.dpad_down && !prevDown) {
-            if (autoRpm) rpmTrim -= RPM_STEP; else Shooter.TARGET_RPM = Math.max(0, Shooter.TARGET_RPM - RPM_STEP);
+            if (autoRpm) rpmTrim -= RobotConfig.RPM_STEP; else RobotConfig.SHOOTER_TARGET_RPM = Math.max(0, RobotConfig.SHOOTER_TARGET_RPM - RobotConfig.RPM_STEP);
         }
-        if (regression.getRequestedDegree() != REGRESSION_DEGREE) regression.refit(REGRESSION_DEGREE);
+        if (regression.getRequestedDegree() != RobotConfig.REGRESSION_DEGREE) regression.refit(RobotConfig.REGRESSION_DEGREE);
         if (autoRpm) {
-            commandedRpm = regression.predict(lastX, lastY, turret.getGoalX(), turret.getGoalY(), !turret.isRedAlliance(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmTrim;
-            commandedRpm = Math.max(0, Math.min(MAX_AUTO_RPM, commandedRpm));
+            commandedRpm = regression.predict(lastX, lastY, turret.getGoalX(), turret.getGoalY(), !turret.isRedAlliance(), shooter.getVoltage(), RobotConfig.SHOOTER_MIN_RPM, RobotConfig.SHOOTER_MAX_RPM) + rpmTrim;
+            commandedRpm = Math.max(0, Math.min(RobotConfig.SHOOTER_MAX_RPM, commandedRpm));
         } else {
-            commandedRpm = Shooter.TARGET_RPM;
+            commandedRpm = RobotConfig.SHOOTER_TARGET_RPM;
         }
-        // Controller 2 left stick press records the shot into the table (robot X, Y relative to the selected goal, the RPM and the battery voltage) (controller 1's left stick switches the drive mode).
+        // Controller 2 left stick press records the shot into the table (robot X, Y relative to the selected goal, the RPM and the battery voltage); the drive is controller 1's sticks.
         if (gamepad2.left_stick_button && !prevL3) { regression.addSample(lastX, lastY, turret.getGoalX(), turret.getGoalY(), !turret.isRedAlliance(), commandedRpm, shooter.getVoltage()); }
         shooter.setTargetRpm(commandedRpm);
         shooter.update();
 
-        // ---- Intake / Transfer Control ----
-        // A (held) = intake in + transfer in + the stop servo open. The triggers on their own spin
-        // the intake and transfer but leave the stop servo blocking, which is what holds the
-        // artifacts in. A wins if both are held.
-        boolean feedButton = gamepad1.a;
-        double intakePower = feedButton
-                ? INTAKE_POWER
-                : (gamepad1.right_trigger - gamepad1.left_trigger) * INTAKE_POWER;
-
-        // The intake and the transfer always spin together: whichever one is asked to move, both do.
-        // Wait for at speed once per bumper press, then keep feeding while it is held. Checking at speed
-        // every loop stopped the transfer each time a ball dragged the RPM out of the band.
-        if (!gamepad1.right_bumper) feedLatched = false;
-        else if (!feedLatched && (!REQUIRE_AT_SPEED || shooter.atSpeed())) feedLatched = true;
-        boolean feedToShooter = gamepad1.right_bumper && feedLatched;
-        shooter.setFeeding(feedToShooter); // fight the RPM drop while a shot is being fed
-        double transferPower = 0;
-        if (feedButton) {
-            transferPower = INTAKE_TRANSFER_POWER;                 // A: intake and transfer together
-        } else if (feedToShooter) {
-            transferPower = TRANSFER_POWER;                        // right bumper, once at speed
-        } else if (gamepad1.left_bumper) {
-            transferPower = -TRANSFER_POWER;
-        } else if (Math.abs(intakePower) > 0.05) {
-            transferPower = Math.signum(intakePower) * INTAKE_TRANSFER_POWER;
-        }
-        // Shoot delay: while feeding, keep pushing the stop time out; after the bumper is released the
-        // intake and transfer carry on until it passes, unless another control is already driving them.
+        // ---- Intake / Transfer Control (2 motors, always the same power) ----
+        // The two motors both drive the intake + transfer, so they are never commanded separately.
+        //   A (hold)      = intake: both motors in (the stop servo stays closed)
+        //   Right bumper  = SHOOT, the only shoot control: opens the stop servo and feeds, but only once
+        //                   the flywheel is at speed, and keeps feeding for SHOOT_STOP_DELAY_SEC after release
+        //   Left bumper   = both motors reversed (unjam)
+        //   Triggers      = both motors forward / reverse, proportional
         double nowShoot = System.nanoTime() / 1e9;
-        if (feedToShooter) {
-            shootHoldUntil = nowShoot + SHOOT_STOP_DELAY_SEC;
-        } else if (transferPower == 0 && nowShoot < shootHoldUntil) {
-            transferPower = TRANSFER_POWER;
-        } else if (transferPower != 0) {
-            shootHoldUntil = 0; // another control took over: no leftover delay
-        }
-        if (Math.abs(intakePower) <= 0.05 && Math.abs(transferPower) > 0.05) {
-            intakePower = Math.signum(transferPower) * INTAKE_POWER; // bumper feed also spins the intake
-        }
-        intake.setPower(Range.clip(intakePower, -1, 1));
-        transfer.setPower(transferPower);
 
-        // ---- Stop Servo: open only while A is held, blocking the rest of the time ----
-        stopServo.setPosition(feedButton ? AutoActions.STOP_DOWN : AutoActions.STOP_BLOCKING);
+        // Gate the shot once per bumper press, so a ball dragging the RPM out of the band does not stop it.
+        if (!gamepad1.right_bumper) feedLatched = false;
+        else if (!feedLatched && (!RobotConfig.REQUIRE_AT_SPEED || shooter.atSpeed())) feedLatched = true;
+        boolean shooting = gamepad1.right_bumper && feedLatched;
+        shooter.setFeeding(shooting); // fight the RPM drop while a shot is being fed
+
+        if (shooting) shootHoldUntil = nowShoot + RobotConfig.SHOOT_STOP_DELAY_SEC;
+        boolean shootTail = !shooting && nowShoot < shootHoldUntil; // the post-shot run-on
+
+        double feedPower;
+        if (gamepad1.a) {
+            feedPower = RobotConfig.INTAKE_POWER;                     // intake
+        } else if (gamepad1.left_bumper) {
+            feedPower = -RobotConfig.INTAKE_POWER;                    // unjam
+            shootHoldUntil = 0;
+        } else if (gamepad1.right_trigger > 0.05 || gamepad1.left_trigger > 0.05) {
+            feedPower = (gamepad1.right_trigger - gamepad1.left_trigger) * RobotConfig.INTAKE_POWER;
+            if (!shooting) shootHoldUntil = 0;                        // a manual control cancels the run-on
+        } else if (shooting || shootTail) {
+            feedPower = RobotConfig.INTAKE_POWER;
+        } else {
+            feedPower = 0;
+        }
+
+        feedPower = Range.clip(feedPower, -1, 1);
+        intake.setPower(feedPower);
+        transfer.setPower(feedPower); // both motors always get the same command
+
+        // ---- Stop Servo: open only while shooting (and through the post-shot run-on) ----
+        stopServo.setPosition((shooting || shootTail) ? RobotConfig.STOP_DOWN : RobotConfig.STOP_BLOCKING);
 
         // ---- Flower Servo: controller 1 dpad-left toggles up <-> down ----
         if (gamepad1.dpad_left && !prevLeft) {
             flowerIsDown = !flowerIsDown;
-            flowerPos = flowerIsDown ? AutoActions.FLOWER_DOWN : AutoActions.FLOWER_UP;
+            flowerPos = flowerIsDown ? RobotConfig.FLOWER_DOWN : RobotConfig.FLOWER_UP;
             flowerServo.setPosition(flowerPos);
         }
         // Controller 2 bumpers fine-adjust the flower: right bumper moves it toward UP, left toward DOWN
-        // (held = keeps moving at FLOWER_ADJUST_PER_SEC). The dpad-left toggle still jumps to the preset.
+        // (held = keeps moving at RobotConfig.FLOWER_ADJUST_PER_SEC). The dpad-left toggle still jumps to the preset.
         double flowerDir = turret.isCornerMode() ? 0 : (gamepad2.right_bumper ? 1 : 0) - (gamepad2.left_bumper ? 1 : 0); // START held = corner buttons
         if (flowerDir != 0) {
-            double lo = Math.min(AutoActions.FLOWER_UP, AutoActions.FLOWER_DOWN);
-            double hi = Math.max(AutoActions.FLOWER_UP, AutoActions.FLOWER_DOWN);
-            double up = Math.signum(AutoActions.FLOWER_UP - AutoActions.FLOWER_DOWN); // which way "up" is
-            flowerPos = Math.max(lo, Math.min(hi, flowerPos + flowerDir * up * FLOWER_ADJUST_PER_SEC * dt));
+            double lo = Math.min(RobotConfig.FLOWER_UP, RobotConfig.FLOWER_DOWN);
+            double hi = Math.max(RobotConfig.FLOWER_UP, RobotConfig.FLOWER_DOWN);
+            double up = Math.signum(RobotConfig.FLOWER_UP - RobotConfig.FLOWER_DOWN); // which way "up" is
+            flowerPos = Math.max(lo, Math.min(hi, flowerPos + flowerDir * up * RobotConfig.FLOWER_ADJUST_PER_SEC * dt));
             flowerServo.setPosition(flowerPos);
         }
 
@@ -223,8 +199,7 @@ public class MainTeleOp extends OpMode {
         telemetry.addData("Voltage effect", regression.describeVoltageEffect());
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
         telemetry.addData("Dip boost", shooter.isRecovering());
-        telemetry.addData("Drive mode (gamepad 1 L3)", turret.isSlowDrive() ? "SLOW (0.7, current directions)" : "FAST (full speed, original directions)");
-        telemetry.addData("Flower / Stop Servo (dpad-left, pad 2 bumpers / A)", "%.2f / %.2f",
+        telemetry.addData("Flower / Stop Servo (dpad-left, pad 2 bumpers / right bumper)", "%.2f / %.2f",
                 flowerServo.getPosition(), stopServo.getPosition());
         telemetry.addData("Loop MS", "%.1f", dt * 1000);
         telemetry.update();

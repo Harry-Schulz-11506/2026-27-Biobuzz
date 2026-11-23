@@ -48,22 +48,10 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 @Config
 public class AutoActions {
 
-    // ---- Dashboard configuration ----
-    public static double INTAKE_POWER = RobotConfig.INTAKE_POWER;
-    public static double TRANSFER_POWER = RobotConfig.TRANSFER_POWER;
-    public static boolean GATE_FEED_ON_SPEED = true;   // feed only once the flywheel is at speed
-    public static int REGRESSION_DEGREE = 1;           // same default as MainTeleOp
-    public static double MIN_AUTO_RPM = 1000;
-    public static double MAX_AUTO_RPM = 3300;
-    public static double AIM_TOLERANCE_DEG = 2.0;
 
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
-    // STOP_DOWN is the open position (artifacts pass), STOP_BLOCKING holds them back.
-    public static double FLOWER_UP = RobotConfig.FLOWER_UP;
-    public static double FLOWER_DOWN = RobotConfig.FLOWER_DOWN;
-    public static double STOP_DOWN = RobotConfig.STOP_DOWN;
-    public static double STOP_BLOCKING = RobotConfig.STOP_BLOCKING;
+    // RobotConfig.STOP_DOWN is the open position (pollen pass), RobotConfig.STOP_BLOCKING holds them back.
 
     private final Turret turret = new Turret();
     private final Shooter shooter = new Shooter();
@@ -93,12 +81,12 @@ public class AutoActions {
         this.follower = follower;
         initTurret(hw);
         shooter.init(hw);
-        regression = new ShooterRegression(REGRESSION_DEGREE);
+        regression = new ShooterRegression(RobotConfig.REGRESSION_DEGREE);
 
         intake = hw.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_1);
         transfer = hw.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_2);
-        intake.setDirection(DcMotorSimple.Direction.REVERSE);
-        transfer.setDirection(DcMotorSimple.Direction.REVERSE);
+        intake.setDirection(RobotConfig.INTAKE_MOTOR_1_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        transfer.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         transfer.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -110,8 +98,8 @@ public class AutoActions {
         // blocking, since 0 is the open position.
         flowerServo = hw.tryGet(Servo.class, RobotConfig.FLOWER_SERVO);
         stopServo = hw.tryGet(Servo.class, RobotConfig.STOP_SERVO);
-        if (flowerServo != null) flowerServo.setPosition(FLOWER_UP);
-        if (stopServo != null) stopServo.setPosition(STOP_BLOCKING);
+        if (flowerServo != null) flowerServo.setPosition(RobotConfig.FLOWER_UP);
+        if (stopServo != null) stopServo.setPosition(RobotConfig.STOP_BLOCKING);
 
         // Intake pivot: 2 servos that move together; the right one is mirrored when PIVOT_RIGHT_REVERSED.
         pivotLeft = hw.tryGet(Servo.class, RobotConfig.PIVOT_SERVO_LEFT);
@@ -131,7 +119,7 @@ public class AutoActions {
      */
     private void initTurret(HardwareMap hw) {
         turret.turret = hw.get(DcMotorEx.class, RobotConfig.TURRET_MOTOR);
-        turret.turret.setDirection(DcMotorSimple.Direction.FORWARD);
+        turret.turret.setDirection(RobotConfig.TURRET_MOTOR_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         turret.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         turret.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         turret.turret.setPower(0);
@@ -151,7 +139,7 @@ public class AutoActions {
 
     /** Same as {@link #update()} but with a pose you already have. */
     public void update(Pose pose) {
-        if (regression.getRequestedDegree() != REGRESSION_DEGREE) regression.refit(REGRESSION_DEGREE);
+        if (regression.getRequestedDegree() != RobotConfig.REGRESSION_DEGREE) regression.refit(RobotConfig.REGRESSION_DEGREE);
         if (pose != null) PoseStorage.lastPose = pose; // TeleOp starts from where the auto left the robot
 
         if (pose != null) {
@@ -175,9 +163,10 @@ public class AutoActions {
         if (feeding) {
             // Wait for the flywheel to be at speed ONCE, then keep feeding until stopShoot(). Checking
             // at speed every loop stopped the transfer each time a ball dragged the RPM out of the band.
-            if (!feedLatched && (!GATE_FEED_ON_SPEED || shooter.atSpeed())) feedLatched = true;
-            transfer.setPower(feedLatched ? TRANSFER_POWER : 0);
-            intake.setPower(feedLatched ? INTAKE_POWER : 0); // intake and transfer always spin together
+            if (!feedLatched && (!RobotConfig.GATE_FEED_ON_SPEED || shooter.atSpeed())) feedLatched = true;
+            double power = feedLatched ? RobotConfig.INTAKE_POWER : 0;
+            intake.setPower(power);
+            transfer.setPower(power); // both motors always get the same command
         }
     }
 
@@ -242,8 +231,8 @@ public class AutoActions {
     public double getTargetX() { return targetX; }
     public double getTargetY() { return targetY; }
 
-    /** Turret pointing at the target within AIM_TOLERANCE_DEG. */
-    public boolean isAimed() { return isAimed(AIM_TOLERANCE_DEG); }
+    /** Turret pointing at the target within RobotConfig.TURRET_AIM_TOLERANCE_DEG. */
+    public boolean isAimed() { return isAimed(RobotConfig.TURRET_AIM_TOLERANCE_DEG); }
 
     public boolean isAimed(double toleranceDeg) {
         return Math.abs(getTurretErrorDeg()) <= toleranceDeg;
@@ -257,18 +246,18 @@ public class AutoActions {
 
     /** Spin the flywheel at a fixed RPM. */
     public void spinUp(double rpm) {
-        commandedRpm = Math.max(0, Math.min(MAX_AUTO_RPM, rpm));
+        commandedRpm = Math.max(0, Math.min(RobotConfig.SHOOTER_MAX_RPM, rpm));
         shooter.setTargetRpm(commandedRpm);
     }
 
     /** Spin the flywheel to the RPM the shot table (field X, Y) wants at the current pose. */
     public void spinUpForDistance() {
-        spinUp(regression.predict(poseX, poseY, targetX, targetY, !turret.isRedAlliance(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM));
+        spinUp(regression.predict(poseX, poseY, targetX, targetY, !turret.isRedAlliance(), shooter.getVoltage(), RobotConfig.SHOOTER_MIN_RPM, RobotConfig.SHOOTER_MAX_RPM));
     }
 
     /** Same, plus rpmOffset (negative = slower). Only the autos that pass an offset are affected. */
     public void spinUpForDistance(double rpmOffset) {
-        spinUp(regression.predict(poseX, poseY, targetX, targetY, !turret.isRedAlliance(), shooter.getVoltage(), MIN_AUTO_RPM, MAX_AUTO_RPM) + rpmOffset);
+        spinUp(regression.predict(poseX, poseY, targetX, targetY, !turret.isRedAlliance(), shooter.getVoltage(), RobotConfig.SHOOTER_MIN_RPM, RobotConfig.SHOOTER_MAX_RPM) + rpmOffset);
     }
 
     public void spinDown() {
@@ -290,16 +279,16 @@ public class AutoActions {
 
     // ===================== FEED (transfer) =====================
 
-    /** Start feeding. With GATE_FEED_ON_SPEED on, the transfer only runs once the flywheel is at speed. */
+    /** Start feeding. With RobotConfig.GATE_FEED_ON_SPEED on, the transfer only runs once the flywheel is at speed. */
     public void shoot() {
-        stopDown(); // stopper open so the artifacts can reach the flywheel
+        stopDown(); // stopper open so the pollen can reach the flywheel
         feeding = true;
         feedLatched = false;
     }
 
     /** Start feeding immediately, without waiting for the flywheel to be at speed (used after a ready timeout). */
     public void shootNow() {
-        stopDown(); // stopper open so the artifacts can reach the flywheel
+        stopDown(); // stopper open so the pollen can reach the flywheel
         feeding = true;
         feedLatched = true;
     }
@@ -324,31 +313,31 @@ public class AutoActions {
     public void intakeOut() { bothOut(); }
     public void intakeStop() { bothStop(); }
 
-    /** Intake in and transfer in together, the way drive practice picks up artifacts. */
+    /** Intake in and transfer in together, the way drive practice picks up pollen. */
     public void intakeInWithTransfer() { bothIn(); }
 
     public void transferIn() { bothIn(); }
     public void transferOut() { bothOut(); }
     public void transferStop() { bothStop(); }
 
-    // The stopper is open (STOP_DOWN) only while shooting; it blocks the rest of the time, intaking included.
-    private void bothIn() { stopBlocking(); intake.setPower(INTAKE_POWER); transfer.setPower(TRANSFER_POWER); }
-    private void bothOut() { intake.setPower(-INTAKE_POWER); transfer.setPower(-TRANSFER_POWER); }
+    // The stopper is open (RobotConfig.STOP_DOWN) only while shooting; it blocks the rest of the time, intaking included.
+    private void bothIn() { stopBlocking(); intake.setPower(RobotConfig.INTAKE_POWER); transfer.setPower(RobotConfig.INTAKE_POWER); }
+    private void bothOut() { intake.setPower(-RobotConfig.INTAKE_POWER); transfer.setPower(-RobotConfig.INTAKE_POWER); }
     private void bothStop() { intake.setPower(0); transfer.setPower(0); stopBlocking(); }
 
     // ===================== FLOWER / STOP SERVOS =====================
 
     /** Flower up (position 0). */
-    public void flowerUp() { if (flowerServo != null) flowerServo.setPosition(FLOWER_UP); }
+    public void flowerUp() { if (flowerServo != null) flowerServo.setPosition(RobotConfig.FLOWER_UP); }
 
     /** Flower down (position 0.6). */
-    public void flowerDown() { if (flowerServo != null) flowerServo.setPosition(FLOWER_DOWN); }
+    public void flowerDown() { if (flowerServo != null) flowerServo.setPosition(RobotConfig.FLOWER_DOWN); }
 
-    /** Stop servo down (position 0): the open position, artifacts pass through. */
-    public void stopDown() { if (stopServo != null) stopServo.setPosition(STOP_DOWN); }
+    /** Stop servo down (position 0): the open position, pollen pass through. */
+    public void stopDown() { if (stopServo != null) stopServo.setPosition(RobotConfig.STOP_DOWN); }
 
-    /** Stop servo raised (position 0.5): the stopping position, artifacts are held back. */
-    public void stopBlocking() { if (stopServo != null) stopServo.setPosition(STOP_BLOCKING); }
+    /** Stop servo raised (position 0.5): the stopping position, pollen are held back. */
+    public void stopBlocking() { if (stopServo != null) stopServo.setPosition(RobotConfig.STOP_BLOCKING); }
 
     // ===================== INTAKE PIVOT (2 servos) =====================
 

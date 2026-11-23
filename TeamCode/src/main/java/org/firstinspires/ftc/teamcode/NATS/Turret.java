@@ -22,92 +22,36 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
 @TeleOp(name = "Turret Tracking Subsystem", group = "Subsystems")
 public class Turret extends OpMode {
 
-    //
-
     // ============================
     // PEDRO PATHING
     // ============================
     public Follower follower;
-    public static double START_X = 6.0;
-    public static double START_Y = 6.0;
-    public static double START_HEADING = 0.0;
-    /** true = TeleOp starts where the auto ended (PoseStorage); false = always use START_X / START_Y / START_HEADING. */
-    public static boolean USE_AUTO_POSE = true;
-
-    // ============================
-    // TARGET POSITION
-    // ============================
-    // Legacy fixed point. Nothing aims or measures with it any more: the turret and the shooter
-    // distance follow the selected goal below.
-    public static double TARGET_X = 60.0;
-    public static double TARGET_Y = 48.0;
 
     // ============================
     // GOAL SELECTION (alliance cell it tracks)
     // BACK toggles RED <-> BLUE, right stick button toggles CELL 1 <-> CELL 2.
     // ============================
-    public static double RED_CELL1_X = RobotConfig.RED_CELL1_X;  public static double RED_CELL1_Y = RobotConfig.RED_CELL1_Y;
-    public static double RED_CELL2_X = RobotConfig.RED_CELL2_X;  public static double RED_CELL2_Y = RobotConfig.RED_CELL2_Y;
-    public static double BLUE_CELL1_X = RobotConfig.BLUE_CELL1_X; public static double BLUE_CELL1_Y = RobotConfig.BLUE_CELL1_Y;
-    public static double BLUE_CELL2_X = RobotConfig.BLUE_CELL2_X; public static double BLUE_CELL2_Y = RobotConfig.BLUE_CELL2_Y;
 
-    // ---- Auto cell swap: when the robot crosses the middle of the field it switches to the cell on its side ----
-    // The two cells of each HIVE sit at different Y, so the middle line is Y = MIDLINE_Y (72 = half of 144).
-    // Crossing it picks the nearer-side cell of your alliance's color. R3 still swaps by hand; the next
-    // crossing of the middle line takes over again.
-    public static boolean AUTO_CELL_SWAP = true;
-    public static double MIDLINE_Y = 72.0;
-    public static double MIDLINE_HYSTERESIS = 3.0;  // inches past the line before it swaps (stops flicker on the line)
-    public static boolean AUTO_CELL_FAR_SIDE = false; // true = pick the cell on the OPPOSITE side to the robot
-
-    // ============================
-    // TURRET PIVOT POSITION
-    // ============================
-    public static double OFFSET_X = -2.0; // 2 inches behind robot center
-    public static double OFFSET_Y = 0.0;
+    // Smallest thing left here: every value below (start pose, cell points, cell-swap line, turret
+    // offset, limits, gains) lives in RobotConfig.
 
     // ============================
     // MOTOR + EXTERNAL ENCODER
     // ============================
     public DcMotorEx turret;
-    // 435 rpm Yellow Jacket -> 24T pulley -> 75T pulley (see RobotConfig)
-    public static double TICKS_PER_REV = RobotConfig.TURRET_TICKS_PER_REV;
-    public static double RADIANS_PER_TICK = (2.0 * Math.PI) / TICKS_PER_REV;
-    public static int ENCODER_SIGN = 1;
 
     public long zeroTicks = 0;
 
     /** HuskyLens tip detector (null = no vision). Its tag nudges the aim when VISION_AIM_ENABLED. */
     public TipDetector vision = null;
 
-    // ============================
-    // MECHANICAL LIMITS
-    // ============================
-    public static double MIN_ANGLE = Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG);
-    public static double MAX_ANGLE = Math.toRadians(RobotConfig.TURRET_MAX_ANGLE_DEG);
-    public static double LIMIT_MARGIN = Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG);
-
-    // ============================
-    // POSITION CONTROL
-    // ============================
-    public static double kP = RobotConfig.TURRET_kP;
-    public static double kI = 0.0;   // filled in by TurretAutoTune (it tunes in ticks, then converts)
-    public static double kD = 0.0;
-    public static double I_LIMIT_POWER = 0.25; // the integral term may never ask for more than this
-    public static double MAX_POWER = RobotConfig.TURRET_MAX_POWER;
-    public static double TOLERANCE = Math.toRadians(RobotConfig.TURRET_TOLERANCE_DEG);
-
     // ---- Driver 2 aim trim (gamepad2 D-pad left/right; Y resets it) ----
-    public static double TRIM_RATE_DEG_PER_SEC = RobotConfig.TRIM_RATE_DEG_PER_SEC; // how fast the trim moves while the D-pad is held
-    public static double SLOW_DRIVE_SPEED = RobotConfig.SLOW_DRIVE_SPEED;       // drive speed in slow mode (gamepad 1 left stick press switches modes)
-    public static double SLOW_TURN_SCALE = RobotConfig.SLOW_TURN_SCALE;        // extra multiplier on turning in slow mode only (1 = same as before, lower = less sensitive)
-    public boolean isSlowDrive() { return slowDrive; }
     public double trimRad = 0.0;                       // added to the tracked target angle
     private long lastTrimNanos = 0;
-    private double integral = 0.0;              // kI accumulator, in rad*s (stays 0 unless kI != 0)
-    private double lastAngleForD = Double.NaN;  // previous angle, for the kD term
+    private double integral = 0.0;              // RobotConfig.TURRET_kI accumulator, in rad*s (stays 0 unless RobotConfig.TURRET_kI != 0)
+    private double lastAngleForD = Double.NaN;  // previous angle, for the RobotConfig.TURRET_kD term
     private double lastPidTime = -1;            // seconds, for dt
-    private Pose startPose = new Pose(START_X, START_Y, START_HEADING); // where this TeleOp started (auto end pose or the default)
+    private Pose startPose = new Pose(RobotConfig.TELEOP_START_X, RobotConfig.TELEOP_START_Y, RobotConfig.TELEOP_START_HEADING_DEG); // where this TeleOp started (auto end pose or the default)
 
     public double targetAngle = 0.0;
     public double turretPower = 0.0;
@@ -117,8 +61,6 @@ public class Turret extends OpMode {
     private boolean holdZero = false;           // true after gamepad2 B: tracking is off and the turret is driven to 0 deg and held there
     public boolean previousA = false;
     private boolean previousX = false;
-    private boolean slowDrive = true;           // true = slow mode (current directions, SLOW_DRIVE_SPEED); false = fast mode (original directions, full speed)
-    private boolean previousDriveToggle = false;
 
     /**
      * true  = Turret calls telemetry.update() itself (running as its own OpMode).
@@ -129,7 +71,7 @@ public class Turret extends OpMode {
 
     private boolean redAlliance = true;   // starts on RED
     private boolean firstCell = true;     // starts on CELL 1
-    private int lastSide = 0;                 // +1 = robot above MIDLINE_Y, -1 = below, 0 = not decided yet
+    private int lastSide = 0;                 // +1 = robot above RobotConfig.CELL_SWAP_MIDLINE_Y, -1 = below, 0 = not decided yet
     private boolean previousBack = false;
     private boolean previousR3 = false;
 
@@ -144,20 +86,20 @@ public class Turret extends OpMode {
     public void init() {
         if (hardwareMap != null) {
             follower = Constants.create(hardwareMap);
-            startPose = (USE_AUTO_POSE && PoseStorage.lastPose != null)
+            startPose = (RobotConfig.USE_AUTO_END_POSE && PoseStorage.lastPose != null)
                     ? new Pose(PoseStorage.lastPose.x(), PoseStorage.lastPose.y(), PoseStorage.lastPose.heading())
-                    : new Pose(START_X, START_Y, START_HEADING);
+                    : new Pose(RobotConfig.TELEOP_START_X, RobotConfig.TELEOP_START_Y, RobotConfig.TELEOP_START_HEADING_DEG);
             follower.setPose(startPose);
 
             turret = hardwareMap.get(DcMotorEx.class, RobotConfig.TURRET_MOTOR);
-            turret.setDirection(DcMotorSimple.Direction.FORWARD);
+            turret.setDirection(RobotConfig.TURRET_MOTOR_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
             turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             turret.setPower(0);
 
             // The encoder is not reset between auto and TeleOp, so reuse the auto's zero: the turret then
             // starts TeleOp at the angle the auto left it. With no stored zero it is 0 deg right here.
-            if (USE_AUTO_POSE && PoseStorage.turretZeroTicks != null) {
+            if (RobotConfig.USE_AUTO_END_POSE && PoseStorage.turretZeroTicks != null) {
                 zeroTicks = PoseStorage.turretZeroTicks;
             } else {
                 zeroTicks = turret.getCurrentPosition();
@@ -181,7 +123,7 @@ public class Turret extends OpMode {
     public double getTurretAngle() {
         if (turret == null) return 0.0;
         long ticks = (long) turret.getCurrentPosition() - zeroTicks;
-        return ticks * ENCODER_SIGN * RADIANS_PER_TICK;
+        return ticks * RobotConfig.TURRET_ENCODER_SIGN * (2.0 * Math.PI / RobotConfig.TURRET_TICKS_PER_REV);
     }
 
     public double getAngle() {
@@ -193,7 +135,7 @@ public class Turret extends OpMode {
     }
 
     public double getTicksPerDegree() {
-        return TICKS_PER_REV / 360.0;
+        return RobotConfig.TURRET_TICKS_PER_REV / 360.0;
     }
 
     public long getRawTicks() {
@@ -203,7 +145,7 @@ public class Turret extends OpMode {
 
     public static double wrapToTurretRange(double angle) {
         double twoPi = 2.0 * Math.PI;
-        return ((angle - MIN_ANGLE) % twoPi + twoPi) % twoPi + MIN_ANGLE;
+        return ((angle - Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG)) % twoPi + twoPi) % twoPi + Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG);
     }
 
     public static double wrap180(double deg) {
@@ -239,14 +181,14 @@ public class Turret extends OpMode {
 
     /** Field X of the goal currently selected (Pedro inches, Dashboard-editable above). */
     public double getGoalX() {
-        if (redAlliance) return firstCell ? RED_CELL1_X : RED_CELL2_X;
-        return firstCell ? BLUE_CELL1_X : BLUE_CELL2_X;
+        if (redAlliance) return firstCell ? RobotConfig.RED_CELL1_X : RobotConfig.RED_CELL2_X;
+        return firstCell ? RobotConfig.BLUE_CELL1_X : RobotConfig.BLUE_CELL2_X;
     }
 
     /** Field Y of the goal currently selected (Pedro inches, Dashboard-editable above). */
     public double getGoalY() {
-        if (redAlliance) return firstCell ? RED_CELL1_Y : RED_CELL2_Y;
-        return firstCell ? BLUE_CELL1_Y : BLUE_CELL2_Y;
+        if (redAlliance) return firstCell ? RobotConfig.RED_CELL1_Y : RobotConfig.RED_CELL2_Y;
+        return firstCell ? RobotConfig.BLUE_CELL1_Y : RobotConfig.BLUE_CELL2_Y;
     }
 
     public double calculateTarget(Pose pose) {
@@ -258,8 +200,8 @@ public class Turret extends OpMode {
         double cos = Math.cos(heading);
         double sin = Math.sin(heading);
 
-        double turretX = pose.x() + OFFSET_X * cos - OFFSET_Y * sin;
-        double turretY = pose.y() + OFFSET_X * sin + OFFSET_Y * cos;
+        double turretX = pose.x() + RobotConfig.TURRET_OFFSET_X * cos - RobotConfig.TURRET_OFFSET_Y * sin;
+        double turretY = pose.y() + RobotConfig.TURRET_OFFSET_X * sin + RobotConfig.TURRET_OFFSET_Y * cos;
 
         double fieldAngle = Math.atan2(targetY - turretY, targetX - turretX);
         double relativeAngle = fieldAngle - heading;
@@ -268,21 +210,21 @@ public class Turret extends OpMode {
     }
 
     /**
-     * Call every loop. When the robot has crossed MIDLINE_Y (past the hysteresis band), selects the
-     * alliance cell on the robot's side (or the far side if AUTO_CELL_FAR_SIDE). Does nothing in between,
+     * Call every loop. When the robot has crossed RobotConfig.CELL_SWAP_MIDLINE_Y (past the hysteresis band), selects the
+     * alliance cell on the robot's side (or the far side if RobotConfig.CELL_SWAP_FAR_SIDE). Does nothing in between,
      * so a manual R3 swap sticks until the next crossing.
      */
     public void autoSelectCell(Pose pose) {
-        if (!AUTO_CELL_SWAP) { lastSide = 0; return; }
+        if (!RobotConfig.AUTO_CELL_SWAP) { lastSide = 0; return; }
         int side = lastSide;
-        if (pose.y() > MIDLINE_Y + MIDLINE_HYSTERESIS) side = 1;
-        else if (pose.y() < MIDLINE_Y - MIDLINE_HYSTERESIS) side = -1;
+        if (pose.y() > RobotConfig.CELL_SWAP_MIDLINE_Y + RobotConfig.CELL_SWAP_HYSTERESIS_IN) side = 1;
+        else if (pose.y() < RobotConfig.CELL_SWAP_MIDLINE_Y - RobotConfig.CELL_SWAP_HYSTERESIS_IN) side = -1;
         if (side == lastSide) return;
         lastSide = side;
 
-        double y1 = redAlliance ? RED_CELL1_Y : BLUE_CELL1_Y;
-        double y2 = redAlliance ? RED_CELL2_Y : BLUE_CELL2_Y;
-        boolean wantUpper = (side > 0) != AUTO_CELL_FAR_SIDE;
+        double y1 = redAlliance ? RobotConfig.RED_CELL1_Y : RobotConfig.BLUE_CELL1_Y;
+        double y2 = redAlliance ? RobotConfig.RED_CELL2_Y : RobotConfig.BLUE_CELL2_Y;
+        boolean wantUpper = (side > 0) != RobotConfig.CELL_SWAP_FAR_SIDE;
         firstCell = (y1 >= y2) == wantUpper; // cell 1 is the upper one when its Y is larger
     }
 
@@ -327,40 +269,40 @@ public class Turret extends OpMode {
         double dt = (lastPidTime < 0) ? 0 : Math.min(now - lastPidTime, 0.1);
         lastPidTime = now;
 
-        // kI and kD are 0 by default, so this is still a plain P controller until TurretAutoTune
-        // writes gains into kP / kI / kD.
-        if (kI != 0) {
+        // RobotConfig.TURRET_kI and RobotConfig.TURRET_kD are 0 by default, so this is still a plain P controller until TurretAutoTune
+        // writes gains into RobotConfig.TURRET_kP / RobotConfig.TURRET_kI / RobotConfig.TURRET_kD.
+        if (RobotConfig.TURRET_kI != 0) {
             integral += error * dt;
-            double limit = I_LIMIT_POWER / Math.abs(kI);
+            double limit = RobotConfig.TURRET_I_LIMIT_POWER / Math.abs(RobotConfig.TURRET_kI);
             integral = Range.clip(integral, -limit, limit);
         } else {
             integral = 0;
         }
         double derivative = 0;
-        if (kD != 0 && dt > 1e-4 && !Double.isNaN(lastAngleForD)) {
+        if (RobotConfig.TURRET_kD != 0 && dt > 1e-4 && !Double.isNaN(lastAngleForD)) {
             derivative = (currentAngle - lastAngleForD) / dt;
         }
         lastAngleForD = currentAngle;
 
-        double power = Range.clip(kP * error + kI * integral - kD * derivative, -MAX_POWER, MAX_POWER);
+        double power = Range.clip(RobotConfig.TURRET_kP * error + RobotConfig.TURRET_kI * integral - RobotConfig.TURRET_kD * derivative, -RobotConfig.TURRET_MAX_POWER, RobotConfig.TURRET_MAX_POWER);
 
-        if (Math.abs(error) < TOLERANCE) {
+        if (Math.abs(error) < Math.toRadians(RobotConfig.TURRET_TOLERANCE_DEG)) {
             power = 0.0;
         }
 
         if (power > 0) {
-            double remaining = MAX_ANGLE - currentAngle;
+            double remaining = Math.toRadians(RobotConfig.TURRET_MAX_ANGLE_DEG) - currentAngle;
             if (remaining <= 0) {
                 power = 0;
-            } else if (remaining < LIMIT_MARGIN) {
-                power *= remaining / LIMIT_MARGIN;
+            } else if (remaining < Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG)) {
+                power *= remaining / Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG);
             }
         } else if (power < 0) {
-            double remaining = currentAngle - MIN_ANGLE;
+            double remaining = currentAngle - Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG);
             if (remaining <= 0) {
                 power = 0;
-            } else if (remaining < LIMIT_MARGIN) {
-                power *= remaining / LIMIT_MARGIN;
+            } else if (remaining < Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG)) {
+                power *= remaining / Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG);
             }
         }
 
@@ -371,17 +313,13 @@ public class Turret extends OpMode {
     @Override
     public void loop() {
         if (follower != null && gamepad1 != null) {
-            // Left stick press toggles the drive mode:
-            //   slow mode (start): strafe and spin directions as they are now, speed x SLOW_DRIVE_SPEED
-            //   fast mode: the ORIGINAL strafe and spin directions, full speed
-            if (gamepad1.left_stick_button && !previousDriveToggle) slowDrive = !slowDrive;
-            previousDriveToggle = gamepad1.left_stick_button;
-            double dirSign = slowDrive ? -1.0 : 1.0;
-            double speed = slowDrive ? SLOW_DRIVE_SPEED : 1.0;
+            // One drive mode only: full stick, strafe and spin in the directions the robot uses now.
+            // If they ever feel mirrored, flip FLIP_STRAFE_AND_SPIN to +1.0 (the only place that matters).
+            final double FLIP_STRAFE_AND_SPIN = -1.0;
             follower.manual(
-                    -gamepad1.left_stick_y * speed,
-                    dirSign * gamepad1.left_stick_x * speed,
-                    dirSign * gamepad1.right_stick_x * speed * (slowDrive ? SLOW_TURN_SCALE : 1.0)
+                    -gamepad1.left_stick_y,
+                    FLIP_STRAFE_AND_SPIN * gamepad1.left_stick_x,
+                    FLIP_STRAFE_AND_SPIN * gamepad1.right_stick_x
             );
             follower.update();
             Pose pose = follower.pose();
@@ -400,7 +338,7 @@ public class Turret extends OpMode {
                 double dtTrim = lastTrimNanos == 0 ? 0 : Math.min((nowN - lastTrimNanos) / 1e9, 0.1);
                 lastTrimNanos = nowN;
                 double dir = (gamepad2.dpad_right ? -1 : 0) + (gamepad2.dpad_left ? 1 : 0); // left = CCW (+)
-                trimRad += Math.toRadians(TRIM_RATE_DEG_PER_SEC) * dir * dtTrim;
+                trimRad += Math.toRadians(RobotConfig.TRIM_RATE_DEG_PER_SEC) * dir * dtTrim;
                 if (gamepad2.y) trimRad = 0; // Y: reset the aim trim (MainTeleOp resets the RPM trim on the same press)
 
                 boolean a = gamepad2.a;
@@ -480,8 +418,8 @@ public class Turret extends OpMode {
 
     public void setOpenLoopPower(double power) {
         double currentAngle = getTurretAngle();
-        if (power > 0 && currentAngle >= MAX_ANGLE) power = 0;
-        if (power < 0 && currentAngle <= MIN_ANGLE) power = 0;
+        if (power > 0 && currentAngle >= Math.toRadians(RobotConfig.TURRET_MAX_ANGLE_DEG)) power = 0;
+        if (power < 0 && currentAngle <= Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG)) power = 0;
         turretPower = power;
         if (turret != null) turret.setPower(power);
     }

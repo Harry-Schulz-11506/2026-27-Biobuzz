@@ -27,7 +27,7 @@ import java.util.List;
  *
  * FIT_TYPE
  *  0 = least-squares fit through all the rows: a flat plane (degree 1) or a curved surface (degree 2, needs 6+ rows).
- *      degree = REGRESSION_DEGREE from MainTeleOp/AutoActions (0 = one average RPM).
+ *      degree = RobotConfig.REGRESSION_DEGREE (0 = one average RPM).
  *  1 = inverse-distance blend: every row is hit EXACTLY, and between rows the RPM is a smooth mix of the nearby
  *      rows (closer rows count more, IDW_POWER sets how much more). Far from every row it drifts toward the
  *      average, so shoot from a few spots across the area you really use.

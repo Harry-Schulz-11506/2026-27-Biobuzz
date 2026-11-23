@@ -38,6 +38,11 @@ public class TipDetector {
     private double distanceIn = Double.NaN;
     private Level level = Level.UNKNOWN;
 
+    // "Tipped" tracking: the highest height seen since resetTip(), and whether the tag has dropped
+    // far enough below it. This is what the auto uses - a tip that falls reads as a lower tag.
+    private double maxHeightIn = Double.NaN;
+    private boolean tipped = false;
+
     public void init(HardwareMap hw) {
         try {
             lens = hw.get(HuskyLens.class, RobotConfig.HUSKYLENS);
@@ -87,6 +92,15 @@ public class TipDetector {
                     ? h
                     : RobotConfig.TIP_HEIGHT_FILTER * heightIn + (1 - RobotConfig.TIP_HEIGHT_FILTER) * h;
             level = classify(heightIn);
+
+            // A tip is "used" when its tag sits lower than it did: remember the highest reading and
+            // flag the drop. Only runs while a tag is actually in view, so it is checked whenever
+            // the camera can see one.
+            if (Double.isNaN(maxHeightIn) || heightIn > maxHeightIn) {
+                maxHeightIn = heightIn;
+            } else if (!tipped && maxHeightIn - heightIn >= RobotConfig.TIP_DROP_IN) {
+                tipped = true;
+            }
         } else {
             expireIfStale(now);
         }
@@ -125,6 +139,24 @@ public class TipDetector {
 
     public boolean hasTag() { return tagId >= 0; }
     public int getTagId() { return tagId; }
+
+    /** Arm the tip check: forget the heights seen so far. Call it when you start watching a hive. */
+    public void resetTip() {
+        maxHeightIn = Double.NaN;
+        tipped = false;
+    }
+
+    /**
+     * True once the tag has dropped TIP_DROP_IN or more below the highest height seen since
+     * {@link #resetTip()}. Sticky: it stays true until the next reset, even if the tag leaves view.
+     */
+    public boolean hasTipped() { return tipped; }
+
+    /** How far the tag has dropped below its highest reading since resetTip(), in inches. */
+    public double getDropIn() {
+        if (Double.isNaN(maxHeightIn) || Double.isNaN(heightIn)) return 0;
+        return Math.max(0, maxHeightIn - heightIn);
+    }
     /** Radians the tag is to the side of the camera centre, already signed for the turret (+ = turn CCW). */
     public double getAimErrorRad() { return aimErrorRad; }
     public double getHeightIn() { return heightIn; }
@@ -148,6 +180,7 @@ public class TipDetector {
         }
         t.addData("Tip tag / level", "%s / %s", hasTag() ? "ID " + tagId : "none", level);
         t.addData("Tip height / distance (in)", "%.1f / %.1f", heightIn, distanceIn);
+        t.addData("Tip drop", "%.1f in -> %s", getDropIn(), tipped ? "TIPPED" : "not yet");
         t.addData("Second cycle?", needsSecondCycle());
     }
 }

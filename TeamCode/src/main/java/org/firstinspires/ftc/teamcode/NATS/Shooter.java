@@ -17,50 +17,6 @@ import com.qualcomm.robotcore.util.Range;
 @Config
 public class Shooter {
 
-    // ---- Velocity PIDF (tune in Dashboard, or run the ShooterAutoTune OpMode) ----
-    public static double kP = 0.000550;   // power per RPM of error
-    public static double kI = 0.000478;
-    public static double kD = 0.0;
-    public static double kV = 0.000344;   // power per RPM  (~1 / 3333 at 12 V)
-    public static double kS = 0.12706;      // static offset power while target > 0
-    public static double I_LIMIT_POWER = 0.25;
-    public static double NOMINAL_VOLTAGE = 12.0;
-
-    // ---- Shot-drop compensation ----
-    // While a shot is being fed, the artifact drags the RPM down. The controller then pushes harder:
-    // the P gain is multiplied and a fixed extra power is added. Set both to neutral (1 and 0) to switch off.
-    public static double FEED_KP_MULT = 1.0;       // kP is multiplied by this while feeding (1 = no change)
-    public static double FEED_BOOST_POWER = 0.0;   // extra motor power added while feeding (0 = none)
-
-    // ---- Dip recovery ----
-    // Once the flywheel has reached its target, the first time the RPM falls DIP_THRESHOLD_RPM or more below
-    // the target (a shot dragging it down), extra power is added until the RPM is back within
-    // RECOVERY_END_RPM of the target. Set RECOVERY_BOOST_POWER to 0 to switch it off.
-    public static double DIP_THRESHOLD_RPM = 75.0;
-    public static double RECOVERY_BOOST_POWER = 0.35;  // extra motor power added while recovering
-    public static double RECOVERY_END_RPM = 20.0;      // recovery ends when RPM is within this of the target
-
-    // ---- Voltage compensation ----
-    // Power needed for a given RPM rises as the battery sags. The feedforward (kS + kV*RPM) is scaled by
-    // NOMINAL_VOLTAGE / battery voltage, so tune kS/kV on a fresh battery at NOMINAL_VOLTAGE.
-    public static boolean VOLTAGE_COMP_ENABLED = true;
-    public static double VOLTAGE_COMP_STRENGTH = 1.0;  // 0 = none, 1 = full, >1 = overcompensate
-    public static double VOLTAGE_READ_SEC = 0.1;       // how often the battery is read (reads are slow)
-    public static double VOLTAGE_FILTER = 0.7;         // 0 = raw reading, closer to 1 = smoother
-    public static double MIN_VOLTAGE = 7.0;            // readings below this are treated as this
-
-    // ---- Geometry ----
-    public static double MOTOR_TICKS_PER_REV = 28;
-    public static double MOTOR_TEETH = 10;
-    public static double FLYWHEEL_TEETH = 10;
-
-    // ---- Behaviour ----
-    public static double TARGET_RPM = 2000;      // used by the TeleOp when the shooter is switched on
-    public static double AT_SPEED_TOLERANCE_RPM = 25;
-    public static double AT_SPEED_HOLD_SEC = 0.25;
-    public static double VELOCITY_FILTER = 0.6;  // 0 = no filtering, closer to 1 = heavier filtering
-    public static boolean REVERSED = false;      // read at init(); flip if the flywheel spins the wrong way
-
     private DcMotorEx motor;
     private VoltageSensor voltageSensor;
     private double voltage = 12.0;
@@ -79,7 +35,7 @@ public class Shooter {
 
     public void init(HardwareMap hw) {
         motor = hw.get(DcMotorEx.class, "shooter");
-        motor.setDirection(REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        motor.setDirection(RobotConfig.SHOOTER_MOTOR_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
@@ -89,26 +45,27 @@ public class Shooter {
 
     /**
      * Convert PID gains from the FtcAutoTune library (tuned in motor ticks/sec) into flywheel RPM units.
-     * 1 flywheel-RPM of error = MOTOR_TICKS_PER_REV * (FLYWHEEL_TEETH/MOTOR_TEETH) / 60 motor ticks/sec,
+     * 1 flywheel-RPM of error = RobotConfig.SHOOTER_MOTOR_TICKS_PER_REV * (RobotConfig.SHOOTER_FLYWHEEL_TEETH/RobotConfig.SHOOTER_MOTOR_TEETH) / 60 motor ticks/sec,
      * so each gain is multiplied by that factor (about 0.84).
      */
     public static void applyTickGains(double kpTicks, double kiTicks, double kdTicks) {
-        double ticksPerSecPerRpm = MOTOR_TICKS_PER_REV * (FLYWHEEL_TEETH / MOTOR_TEETH) / 60.0;
-        kP = kpTicks * ticksPerSecPerRpm;
-        kI = kiTicks * ticksPerSecPerRpm;
-        kD = kdTicks * ticksPerSecPerRpm;
+        double ticksPerSecPerRpm = RobotConfig.SHOOTER_MOTOR_TICKS_PER_REV * (RobotConfig.SHOOTER_FLYWHEEL_TEETH / RobotConfig.SHOOTER_MOTOR_TEETH) / 60.0;
+        RobotConfig.SHOOTER_kP = kpTicks * ticksPerSecPerRpm;
+        RobotConfig.SHOOTER_kI = kiTicks * ticksPerSecPerRpm;
+        RobotConfig.SHOOTER_kD = kdTicks * ticksPerSecPerRpm;
     }
 
     /** Flywheel RPM from motor ticks/sec through the 10T:18T gear stage. */
     private double rawRpm() {
-        double motorRpm = motor.getVelocity() / MOTOR_TICKS_PER_REV * 60.0;
-        return motorRpm * (MOTOR_TEETH / FLYWHEEL_TEETH);
+        double motorRpm = motor.getVelocity() / RobotConfig.SHOOTER_MOTOR_TICKS_PER_REV * 60.0;
+        double rpm = motorRpm * (RobotConfig.SHOOTER_MOTOR_TEETH / RobotConfig.SHOOTER_FLYWHEEL_TEETH);
+        return RobotConfig.SHOOTER_ENCODER_REVERSED ? -rpm : rpm;
     }
 
     private void readVoltage(double now) {
-        if (lastVoltageRead < 0 || now - lastVoltageRead > VOLTAGE_READ_SEC) {
-            double v = Math.max(voltageSensor.getVoltage(), MIN_VOLTAGE);
-            voltage = (lastVoltageRead < 0) ? v : VOLTAGE_FILTER * voltage + (1 - VOLTAGE_FILTER) * v;
+        if (lastVoltageRead < 0 || now - lastVoltageRead > RobotConfig.SHOOTER_VOLTAGE_READ_SEC) {
+            double v = Math.max(voltageSensor.getVoltage(), RobotConfig.SHOOTER_MIN_VOLTAGE);
+            voltage = (lastVoltageRead < 0) ? v : RobotConfig.SHOOTER_VOLTAGE_FILTER * voltage + (1 - RobotConfig.SHOOTER_VOLTAGE_FILTER) * v;
             lastVoltageRead = now;
         }
     }
@@ -119,7 +76,7 @@ public class Shooter {
         targetRpm = Math.max(0, rpm);
     }
 
-    /** Tell the shooter an artifact is being fed, so it fights the RPM drop. Call every loop before update(). */
+    /** Tell the shooter an pollen is being fed, so it fights the RPM drop. Call every loop before update(). */
     public void setFeeding(boolean feeding) { this.feeding = feeding; }
 
     public boolean isRecovering() { return recovering; }
@@ -131,14 +88,14 @@ public class Shooter {
 
     public boolean atSpeed() {
         return targetRpm > 0 && inBandSince >= 0
-                && (System.nanoTime() / 1e9 - inBandSince) >= AT_SPEED_HOLD_SEC;
+                && (System.nanoTime() / 1e9 - inBandSince) >= RobotConfig.SHOOTER_AT_SPEED_HOLD_SEC;
     }
 
     /** Measure velocity only (no control). Used by autotune. Call every loop. */
     public void updateMeasurement() {
         double now = System.nanoTime() / 1e9;
         readVoltage(now);
-        rpm = VELOCITY_FILTER * rpm + (1 - VELOCITY_FILTER) * rawRpm();
+        rpm = RobotConfig.SHOOTER_VELOCITY_FILTER * rpm + (1 - RobotConfig.SHOOTER_VELOCITY_FILTER) * rawRpm();
     }
 
     /** Run the velocity controller once. Call every loop. */
@@ -162,10 +119,10 @@ public class Shooter {
         double error = targetRpm - rpm;
 
         double derivative = 0;
-        // Dip detection: armed once at the target; the first drop of DIP_THRESHOLD_RPM or more starts the boost.
-        if (Math.abs(error) <= AT_SPEED_TOLERANCE_RPM) armed = true;
-        if (!recovering && armed && error >= DIP_THRESHOLD_RPM) recovering = true;
-        if (recovering && error <= RECOVERY_END_RPM) recovering = false;
+        // Dip detection: armed once at the target; the first drop of RobotConfig.SHOOTER_DIP_THRESHOLD_RPM or more starts the boost.
+        if (Math.abs(error) <= RobotConfig.SHOOTER_AT_SPEED_TOLERANCE_RPM) armed = true;
+        if (!recovering && armed && error >= RobotConfig.SHOOTER_DIP_THRESHOLD_RPM) recovering = true;
+        if (recovering && error <= RobotConfig.SHOOTER_RECOVERY_END_RPM) recovering = false;
 
         if (dt > 1e-4 && !recovering) { // the integral is frozen during the boost so it cannot wind up
             integral += error * dt;
@@ -173,27 +130,27 @@ public class Shooter {
         }
         lastRpm = rpm;
 
-        if (kI > 1e-12) {
-            double limit = I_LIMIT_POWER / kI;
+        if (RobotConfig.SHOOTER_kI > 1e-12) {
+            double limit = RobotConfig.SHOOTER_I_LIMIT_POWER / RobotConfig.SHOOTER_kI;
             integral = Range.clip(integral, -limit, limit);
         } else {
             integral = 0;
         }
 
-        double voltageScale = VOLTAGE_COMP_ENABLED
-                ? 1.0 + VOLTAGE_COMP_STRENGTH * (NOMINAL_VOLTAGE / voltage - 1.0)
+        double voltageScale = RobotConfig.SHOOTER_VOLTAGE_COMP_ENABLED
+                ? 1.0 + RobotConfig.SHOOTER_VOLTAGE_COMP_STRENGTH * (RobotConfig.SHOOTER_NOMINAL_VOLTAGE / voltage - 1.0)
                 : 1.0;
-        double feedforward = (kS + kV * targetRpm) * voltageScale;
-        double p = feeding ? kP * FEED_KP_MULT : kP;
-        double boost = feeding ? FEED_BOOST_POWER : 0.0;
-        if (recovering) boost += RECOVERY_BOOST_POWER;
-        double out = feedforward + boost + p * error + kI * integral - kD * derivative;
+        double feedforward = (RobotConfig.SHOOTER_kS + RobotConfig.SHOOTER_kV * targetRpm) * voltageScale;
+        double p = feeding ? RobotConfig.SHOOTER_kP * RobotConfig.SHOOTER_FEED_KP_MULT : RobotConfig.SHOOTER_kP;
+        double boost = feeding ? RobotConfig.SHOOTER_FEED_BOOST_POWER : 0.0;
+        if (recovering) boost += RobotConfig.SHOOTER_RECOVERY_BOOST_POWER;
+        double out = feedforward + boost + p * error + RobotConfig.SHOOTER_kI * integral - RobotConfig.SHOOTER_kD * derivative;
         out = Range.clip(out, 0, 1);
 
         lastPower = out;
         motor.setPower(out);
 
-        if (Math.abs(error) <= AT_SPEED_TOLERANCE_RPM) {
+        if (Math.abs(error) <= RobotConfig.SHOOTER_AT_SPEED_TOLERANCE_RPM) {
             if (inBandSince < 0) inBandSince = now;
         } else {
             inBandSince = -1;

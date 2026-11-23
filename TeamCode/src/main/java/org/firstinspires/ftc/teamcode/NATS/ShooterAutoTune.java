@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Flywheel velocity tuner, built on FTC-AutoTune v1.4.3 (https://ftcautotune.dev).
  *
- * All settings live in {@link TuningConfig} (Dashboard: "TuningConfig"), in flywheel RPM:
+ * All settings live in RobotConfig (Dashboard: "RobotConfig", section 11), in flywheel RPM:
  *
  *  Phase 1 - feedforward sweep (open-loop characterization): the flywheel runs at each
  *            SHOOTER_FF_POWERS value until it settles, and the (power, RPM) pairs are fitted as
@@ -25,10 +25,10 @@ import java.util.List;
  *  Phase 2 - relay test: RelayAutoTuner swings the power by +/- SHOOTER_RELAY_AMPLITUDE around the
  *            feedforward power for the target RPM, which forces a limit cycle. Ku / Tu come out of it.
  *  Results - ZieglerNicholsCalculator gives six candidates. Hold A to live-test one, D-pad up/down to
- *            pick another, B to write it into Shooter (kP, kI, kD, kV, kS).
+ *            pick another, B to write it into RobotConfig.SHOOTER_kP / _kI / _kD / _kV / _kS.
  *
  * Nothing is in the shooter path. B aborts. Gains written with B are live only until the robot is
- * restarted: copy them into Shooter.java (or their Dashboard defaults) to keep them.
+ * restarted: copy them into RobotConfig (section 4) to keep them.
  */
 @TeleOp(name = "AutoTune: Shooter", group = "Tuning")
 public class ShooterAutoTune extends LinearOpMode {
@@ -48,9 +48,9 @@ public class ShooterAutoTune extends LinearOpMode {
         shooter.init(hardwareMap);
 
         telemetry.addLine("FTC-AutoTune v1.4.3: flywheel velocity PIDF");
-        telemetry.addData("target", "%.0f RPM", TuningConfig.SHOOTER_TARGET_RPM);
-        telemetry.addData("relay", "+/- %.2f power", TuningConfig.SHOOTER_RELAY_AMPLITUDE);
-        telemetry.addData("candidates", TuningConfig.SHOOTER_TUNE_INTEGRAL ? "PID family" : "PD family (kI = 0)");
+        telemetry.addData("target", "%.0f RPM", RobotConfig.TUNE_SHOOTER_TARGET_RPM);
+        telemetry.addData("relay", "+/- %.2f power", RobotConfig.TUNE_SHOOTER_RELAY_AMPLITUDE);
+        telemetry.addData("candidates", RobotConfig.TUNE_SHOOTER_TUNE_INTEGRAL ? "PID family" : "PD family (kI = 0)");
         telemetry.addLine("Clear the shooter path. START to tune, B to abort.");
         telemetry.update();
 
@@ -75,7 +75,7 @@ public class ShooterAutoTune extends LinearOpMode {
 
     /** Sweeps the open-loop powers and fits power = kS + kV * RPM. Sets kS / kV, or sets failure. */
     private boolean feedforwardSweep() {
-        double[] powers = TuningConfig.SHOOTER_FF_POWERS;
+        double[] powers = RobotConfig.TUNE_SHOOTER_FF_POWERS;
         if (powers == null || powers.length < 2) {
             failure = "SHOOTER_FF_POWERS needs at least two power levels.";
             return false;
@@ -92,7 +92,7 @@ public class ShooterAutoTune extends LinearOpMode {
             if (Double.isNaN(rpm)) return false;
 
             // Normalise to the nominal battery voltage, the same way Shooter's feedforward does.
-            double nominalPower = power * shooter.getVoltage() / Shooter.NOMINAL_VOLTAGE;
+            double nominalPower = power * shooter.getVoltage() / RobotConfig.SHOOTER_NOMINAL_VOLTAGE;
             n++;
             sumPower += nominalPower;
             sumRpm += rpm;
@@ -101,7 +101,7 @@ public class ShooterAutoTune extends LinearOpMode {
         }
 
         if (n < 2) {
-            failure = "The sweep produced no measurable RPM. Check the encoder and Shooter.REVERSED.";
+            failure = "The sweep produced no measurable RPM. Check the encoder and RobotConfig.SHOOTER_ENCODER_REVERSED / SHOOTER_MOTOR_REVERSED.";
             return false;
         }
 
@@ -114,7 +114,7 @@ public class ShooterAutoTune extends LinearOpMode {
         kS = (sumPower - kV * sumRpm) / n;
 
         if (kV <= 0) {
-            failure = "kV came out <= 0: RPM fell as power rose. Check the encoder and Shooter.REVERSED.";
+            failure = "kV came out <= 0: RPM fell as power rose. Flip RobotConfig.SHOOTER_ENCODER_REVERSED or SHOOTER_MOTOR_REVERSED.";
             return false;
         }
         if (kS < 0) kS = 0; // a negative intercept just means the sweep did not reach low enough
@@ -126,16 +126,16 @@ public class ShooterAutoTune extends LinearOpMode {
         ElapsedTime clock = new ElapsedTime();
         double sum = 0;
         int samples = 0;
-        double settle = TuningConfig.SHOOTER_FF_SETTLE_S;
+        double settle = RobotConfig.TUNE_SHOOTER_FF_SETTLE_S;
 
         while (opModeIsActive() && !gamepad1.b
-                && clock.seconds() < settle + TuningConfig.SHOOTER_FF_SAMPLE_S) {
+                && clock.seconds() < settle + RobotConfig.TUNE_SHOOTER_FF_SAMPLE_S) {
             shooter.setOpenLoopPower(power);
             shooter.updateMeasurement();
 
-            if (shooter.getRpm() > TuningConfig.SHOOTER_ABORT_RPM) {
+            if (shooter.getRpm() > RobotConfig.TUNE_SHOOTER_ABORT_RPM) {
                 failure = String.format("RPM %.0f passed SHOOTER_ABORT_RPM (%.0f) at power %.2f.",
-                        shooter.getRpm(), TuningConfig.SHOOTER_ABORT_RPM, power);
+                        shooter.getRpm(), RobotConfig.TUNE_SHOOTER_ABORT_RPM, power);
                 shooter.stop();
                 return Double.NaN;
             }
@@ -166,31 +166,31 @@ public class ShooterAutoTune extends LinearOpMode {
         // Bias the relay to the feedforward power that holds the target, so the flywheel oscillates
         // around the shooting speed instead of around zero power. The relay still swings by
         // +/- SHOOTER_RELAY_AMPLITUDE, which is the amplitude the library's Ku formula expects.
-        double bias = kS + kV * TuningConfig.SHOOTER_TARGET_RPM;
-        double amplitude = TuningConfig.SHOOTER_RELAY_AMPLITUDE;
+        double bias = kS + kV * RobotConfig.TUNE_SHOOTER_TARGET_RPM;
+        double amplitude = RobotConfig.TUNE_SHOOTER_RELAY_AMPLITUDE;
 
         // The relay has to swing symmetrically, or Ku is wrong: check both ends before spinning up.
         if (bias + amplitude > 1.0) {
             failure = String.format("The flywheel needs %.2f power for %.0f RPM, so a %.2f relay swing does not fit "
                             + "under 1.0. Lower SHOOTER_TARGET_RPM or SHOOTER_RELAY_AMPLITUDE.",
-                    bias, TuningConfig.SHOOTER_TARGET_RPM, amplitude);
+                    bias, RobotConfig.TUNE_SHOOTER_TARGET_RPM, amplitude);
             return false;
         }
         if (bias - amplitude < 0.0) {
             failure = String.format("A %.2f relay swing around %.2f power would clip at 0. Raise SHOOTER_TARGET_RPM "
-                    + "or lower SHOOTER_RELAY_AMPLITUDE.", amplitude, bias);
+                            + "or lower SHOOTER_RELAY_AMPLITUDE.", amplitude, bias);
             return false;
         }
 
         RelayAutoTuner tuner = new RelayAutoTuner(
-                TuningConfig.SHOOTER_TARGET_RPM,
+                RobotConfig.TUNE_SHOOTER_TARGET_RPM,
                 amplitude,
-                TuningConfig.SHOOTER_HYSTERESIS_RPM,
-                TuningConfig.SHOOTER_CYCLES_TO_COLLECT,
-                TuningConfig.SHOOTER_CYCLES_TO_IGNORE);
+                RobotConfig.TUNE_SHOOTER_HYSTERESIS_RPM,
+                RobotConfig.TUNE_SHOOTER_CYCLES_TO_COLLECT,
+                RobotConfig.TUNE_SHOOTER_CYCLES_TO_IGNORE);
 
         ElapsedTime clock = new ElapsedTime();
-        int totalCycles = TuningConfig.SHOOTER_CYCLES_TO_COLLECT + TuningConfig.SHOOTER_CYCLES_TO_IGNORE;
+        int totalCycles = RobotConfig.TUNE_SHOOTER_CYCLES_TO_COLLECT + RobotConfig.TUNE_SHOOTER_CYCLES_TO_IGNORE;
 
         while (opModeIsActive() && !tuner.isFinished()) {
             shooter.updateMeasurement();
@@ -200,7 +200,7 @@ public class ShooterAutoTune extends LinearOpMode {
                 failure = "B was pressed.";
                 break;
             }
-            if (rpm > TuningConfig.SHOOTER_ABORT_RPM) {
+            if (rpm > RobotConfig.TUNE_SHOOTER_ABORT_RPM) {
                 failure = "RPM passed SHOOTER_ABORT_RPM.";
                 break;
             }
@@ -209,12 +209,12 @@ public class ShooterAutoTune extends LinearOpMode {
             shooter.setOpenLoopPowerSigned(bias + relay);
 
             telemetry.addLine("Phase 2/2: relay test (Ziegler-Nichols)");
-            telemetry.addData("rpm / target", "%.0f / %.0f", rpm, TuningConfig.SHOOTER_TARGET_RPM);
+            telemetry.addData("rpm / target", "%.0f / %.0f", rpm, RobotConfig.TUNE_SHOOTER_TARGET_RPM);
             telemetry.addData("cycles", "%d / %d", tuner.cyclesCollected(), totalCycles);
             telemetry.addData("elapsed", "%.1f s", clock.seconds());
             telemetry.update();
 
-            if (clock.seconds() > TuningConfig.SHOOTER_TIMEOUT_S) {
+            if (clock.seconds() > RobotConfig.TUNE_SHOOTER_TIMEOUT_S) {
                 failure = "TIMED OUT: no stable oscillation. Raise SHOOTER_RELAY_AMPLITUDE or lower SHOOTER_TARGET_RPM.";
                 break;
             }
@@ -228,7 +228,7 @@ public class ShooterAutoTune extends LinearOpMode {
             failure = "The relay test saw no usable oscillation amplitude. Check the encoder.";
             return false;
         }
-        candidates = ZieglerNicholsCalculator.computeCandidates(relayResult, kV, TuningConfig.SHOOTER_TUNE_INTEGRAL);
+        candidates = ZieglerNicholsCalculator.computeCandidates(relayResult, kV, RobotConfig.TUNE_SHOOTER_TUNE_INTEGRAL);
         if (candidates == null || candidates.isEmpty()) {
             failure = "ZieglerNicholsCalculator returned no candidates.";
             return false;
@@ -244,7 +244,7 @@ public class ShooterAutoTune extends LinearOpMode {
     // ---------------------------------------------------------------------
 
     private void resultsLoop() {
-        int selected = Math.max(0, Math.min(candidates.size() - 1, TuningConfig.SHOOTER_LIVE_CANDIDATE));
+        int selected = Math.max(0, Math.min(candidates.size() - 1, RobotConfig.TUNE_SHOOTER_LIVE_CANDIDATE));
         PIDFController live = null;
         int liveIndex = -1;
         boolean previousUp = false;
@@ -271,7 +271,7 @@ public class ShooterAutoTune extends LinearOpMode {
                 shooter.updateMeasurement();
                 // kS is not part of the library's controller, so add it here: the flywheel sees the
                 // same feedforward + PID the Shooter controller will run once these gains are applied.
-                double power = kS + live.calculate(shooter.getRpm(), TuningConfig.SHOOTER_TARGET_RPM);
+                double power = kS + live.calculate(shooter.getRpm(), RobotConfig.TUNE_SHOOTER_TARGET_RPM);
                 shooter.setOpenLoopPower(Math.max(0.0, Math.min(1.0, power)));
             } else {
                 live = null;
@@ -281,11 +281,11 @@ public class ShooterAutoTune extends LinearOpMode {
 
             boolean b = gamepad1.b;
             if (b && !previousB) {
-                Shooter.kP = gains.kP;
-                Shooter.kI = gains.kI;
-                Shooter.kD = gains.kD;
-                Shooter.kV = gains.kF;
-                Shooter.kS = kS;
+                RobotConfig.SHOOTER_kP = gains.kP;
+                RobotConfig.SHOOTER_kI = gains.kI;
+                RobotConfig.SHOOTER_kD = gains.kD;
+                RobotConfig.SHOOTER_kV = gains.kF;
+                RobotConfig.SHOOTER_kS = kS;
                 applied = gains.label;
             }
             previousB = b;
@@ -296,7 +296,7 @@ public class ShooterAutoTune extends LinearOpMode {
             for (int i = 0; i < candidates.size(); i++) {
                 telemetry.addLine((i == selected ? "> " : "  ") + candidates.get(i));
             }
-            telemetry.addData("rpm / target", "%.0f / %.0f", shooter.getRpm(), TuningConfig.SHOOTER_TARGET_RPM);
+            telemetry.addData("rpm / target", "%.0f / %.0f", shooter.getRpm(), RobotConfig.TUNE_SHOOTER_TARGET_RPM);
             telemetry.addData("applied to Shooter", applied);
             telemetry.addLine("D-pad up/down: pick   A: hold = live test   B: apply");
             telemetry.update();
