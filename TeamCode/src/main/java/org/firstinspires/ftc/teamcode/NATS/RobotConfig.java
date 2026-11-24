@@ -35,7 +35,7 @@ public class RobotConfig {
 
     // Intake + transfer are driven by 2 motors that always run together at the same power.
     public static final String INTAKE_MOTOR_1    = "intake";     // TODO name of the first intake/transfer motor
-    public static final String INTAKE_MOTOR_2    = "transfer";   // TODO name of the second intake/transfer motor
+    public static final String INTAKE_MOTOR_2    = "intake2";   // TODO name of the second intake/transfer motor
 
     // The intake pivots on 2 servos that move together.
     public static final String PIVOT_SERVO_LEFT  = "pivotL";     // TODO
@@ -105,8 +105,8 @@ public class RobotConfig {
     // 4. SHOOTER  (flywheel velocity loop)
     // =====================================================================
     // ---- Speed ----
-    public static double SHOOTER_MIN_RPM = 1000;
-    public static double SHOOTER_MAX_RPM = 3300;
+    public static double SHOOTER_MIN_RPM = 0;
+    public static double SHOOTER_MAX_RPM = 10000;
     public static double RPM_STEP = 100;
     /** Fixed speed used when the auto-RPM table is switched off, and the starting point for tuning. */
     public static double SHOOTER_TARGET_RPM = 2000;
@@ -338,7 +338,7 @@ public class RobotConfig {
     public static double TUNE_SHOOTER_FF_SETTLE_S = 3.0;
     public static double TUNE_SHOOTER_FF_SAMPLE_S = 1.0;
     /** Safety cutoff: the tuner stops the flywheel above this speed. */
-    public static double TUNE_SHOOTER_ABORT_RPM = 3400;
+    public static double TUNE_SHOOTER_ABORT_RPM = 10000;
     /** false = PD-only candidates (kI stays 0), recommended for a flywheel. true = full PID family. */
     public static boolean TUNE_SHOOTER_TUNE_INTEGRAL = false;
     /** Candidate the live test starts on: 0 = most conservative ... 5 = most aggressive (4 = classic ZN). */
