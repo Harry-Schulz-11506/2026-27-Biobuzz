@@ -25,7 +25,7 @@ public class MainTeleOp extends OpMode {
     private ShooterRegression regression;
     private boolean feedLatched = false;
     private double shootHoldUntil = 0;   // time (s) until which the intake + transfer keep running after a shot
-    private DcMotorEx intake, transfer;
+    private DcMotorEx intake, intake2;
     private Servo flowerServo, stopServo;
 
     private double lastDistance = 0;   // distance to the tracked goal (telemetry only now)
@@ -56,19 +56,19 @@ public class MainTeleOp extends OpMode {
         regression = new ShooterRegression(RobotConfig.REGRESSION_DEGREE);
 
         intake = hardwareMap.get(DcMotorEx.class, "intake");
-        transfer = hardwareMap.get(DcMotorEx.class, "transfer");
-        intake.setDirection(RobotConfig.INTAKE_MOTOR_1_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        transfer.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        intake2 = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_2);
+        intake.setDirection(DcMotorSimple.Direction.FORWARD);
+        intake2.setDirection(DcMotorSimple.Direction.REVERSE);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        transfer.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        intake2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        transfer.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        intake2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // Servos hold their last position, so start them at their rest state: flower up, stop
         // blocking (0 is the open position, 0.5 holds the pollen). The positions live in
         // AutoActions so TeleOp and auto cannot drift apart.
         flowerServo = hardwareMap.get(Servo.class, "flower");
-        stopServo = hardwareMap.get(Servo.class, "stop");
+        stopServo = hardwareMap.get(Servo.class, RobotConfig.STOP_SERVO);
         flowerServo.setPosition(RobotConfig.FLOWER_UP);
         stopServo.setPosition(RobotConfig.STOP_BLOCKING);
 
@@ -164,10 +164,12 @@ public class MainTeleOp extends OpMode {
 
         feedPower = Range.clip(feedPower, -1, 1);
         intake.setPower(feedPower);
-        transfer.setPower(feedPower); // both motors always get the same command
+        intake2.setPower(feedPower); // both motors always get the same command
 
         // ---- Stop Servo: open only while shooting (and through the post-shot run-on) ----
-        stopServo.setPosition((shooting || shootTail) ? RobotConfig.STOP_DOWN : RobotConfig.STOP_BLOCKING);
+        // Gamepad 1 B (hold) forces it open by hand: use it to check the servo and its two positions.
+        boolean stopOpen = shooting || shootTail || gamepad1.b;
+        stopServo.setPosition(stopOpen ? RobotConfig.STOP_DOWN : RobotConfig.STOP_BLOCKING);
 
         // ---- Flower Servo: controller 1 dpad-left toggles up <-> down ----
         if (gamepad1.dpad_left && !prevLeft) {
@@ -199,7 +201,7 @@ public class MainTeleOp extends OpMode {
         telemetry.addData("Voltage effect", regression.describeVoltageEffect());
         telemetry.addData("Shooter At Speed", shooter.atSpeed());
         telemetry.addData("Dip boost", shooter.isRecovering());
-        telemetry.addData("Flower / Stop Servo (dpad-left, pad 2 bumpers / right bumper)", "%.2f / %.2f",
+        telemetry.addData("Flower / Stop Servo (dpad-left, pad 2 bumpers / right bumper, B = stopper open)", "%.2f / %.2f",
                 flowerServo.getPosition(), stopServo.getPosition());
         telemetry.addData("Loop MS", "%.1f", dt * 1000);
         telemetry.update();
@@ -210,6 +212,6 @@ public class MainTeleOp extends OpMode {
         turret.stop();
         shooter.stop();
         intake.setPower(0);
-        transfer.setPower(0);
+        intake2.setPower(0);
     }
 }

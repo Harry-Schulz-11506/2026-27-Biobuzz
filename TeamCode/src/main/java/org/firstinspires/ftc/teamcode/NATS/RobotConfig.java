@@ -64,12 +64,14 @@ public class RobotConfig {
 
     // ---- Turret ----
     public static double TURRET_MAX_POWER = 0.8;
-    public static double TURRET_kP = 1.2;          // TODO re-tune: the ratio changed, start lower if it oscillates
+    public static double TURRET_kP = 5.0;          // power per radian of error. Raised from 1.2 (too weak near the target); run TurretAutoTune for real values
+    /** Smallest power the turret is given while it is still outside the tolerance, to beat friction (0 = off). */
+    public static double TURRET_MIN_POWER = 0.05;
     public static double TURRET_kI = 0.0;          // left at 0 unless TurretAutoTune says otherwise
     public static double TURRET_kD = 0.0;
     public static double TURRET_I_LIMIT_POWER = 0.25; // the integral term may never ask for more than this
     /** +1 when positive power raises the encoder count; TurretAutoTune measures this and writes it back. */
-    public static int    TURRET_ENCODER_SIGN = 1;
+    public static int    TURRET_ENCODER_SIGN = -1;
     public static double TURRET_TOLERANCE_DEG = 1.0;
     /** How close the auto's aim has to be before it counts as ready to shoot. */
     public static double TURRET_AIM_TOLERANCE_DEG = 2.0;
@@ -95,11 +97,11 @@ public class RobotConfig {
     public static boolean SHOOTER_ENCODER_REVERSED = true;
 
     /** Turret motor power direction (the encoder side is TURRET_ENCODER_SIGN in section 2). */
-    public static boolean TURRET_MOTOR_REVERSED = false;
+    public static boolean TURRET_MOTOR_REVERSED = true;
 
     /** The 2 intake/transfer motors (they always run together at INTAKE_POWER). */
-    public static boolean INTAKE_MOTOR_1_REVERSED = true;
-    public static boolean INTAKE_MOTOR_2_REVERSED = true;
+    public static boolean INTAKE_MOTOR_1_REVERSED = false;   // intake  = Direction.FORWARD
+    public static boolean INTAKE_MOTOR_2_REVERSED = true;    // intake2 = Direction.REVERSE
 
     // =====================================================================
     // 4. SHOOTER  (flywheel velocity loop)
@@ -107,16 +109,17 @@ public class RobotConfig {
     // ---- Speed ----
     public static double SHOOTER_MIN_RPM = 0;
     public static double SHOOTER_MAX_RPM = 10000;
-    public static double RPM_STEP = 100;
+    public static double RPM_STEP = 100;          // gamepad 1 D-pad
+    public static double RPM_STEP_GAMEPAD2 = 50;  // gamepad 2 D-pad up / down
     /** Fixed speed used when the auto-RPM table is switched off, and the starting point for tuning. */
     public static double SHOOTER_TARGET_RPM = 2000;
 
     // ---- Velocity PIDF (used by Shooter, written by ShooterAutoTune) ----
-    public static double SHOOTER_kP = 0.000550;   // power per RPM of error
-    public static double SHOOTER_kI = 0.000478;
-    public static double SHOOTER_kD = 0.0;
-    public static double SHOOTER_kV = 0.000344;   // power per RPM  (~1 / 3333 at 12 V)
-    public static double SHOOTER_kS = 0.12706;    // static offset power while target > 0
+    public static double SHOOTER_kP = 0.00279;   // power per RPM of error
+    public static double SHOOTER_kI = 0.0;
+    public static double SHOOTER_kD = 0.00024;
+    public static double SHOOTER_kV = 0.000177;   // power per RPM  (~1 / 3333 at 12 V)
+    public static double SHOOTER_kS = 0.06562;    // static offset power while target > 0
     public static double SHOOTER_I_LIMIT_POWER = 0.25;
     public static double SHOOTER_NOMINAL_VOLTAGE = 12.0;
 
@@ -162,7 +165,7 @@ public class RobotConfig {
     // =====================================================================
     // 5. TURRET GEARING (435 rpm goBILDA Yellow Jacket -> 24T pulley -> 75T pulley)
     // =====================================================================
-    public static final double TURRET_MOTOR_TICKS_PER_REV = 383.6;  // 435 rpm Yellow Jacket, encoder at the output shaft (13.7:1 x 28)
+    public static final double TURRET_MOTOR_TICKS_PER_REV = 384.5;  // 435 rpm Yellow Jacket, 384.5 PPR at the output shaft
     public static final double TURRET_DRIVE_TEETH = 24.0;           // pulley on the motor
     public static final double TURRET_DRIVEN_TEETH = 75.0;          // pulley on the turret
     public static final double TURRET_RATIO = TURRET_DRIVEN_TEETH / TURRET_DRIVE_TEETH;          // 3.125 : 1
@@ -306,7 +309,7 @@ public class RobotConfig {
     public static double TIP_DROP_IN        = 6.0;
 
     // ---- Turret fine aim from the tag ----
-    public static boolean VISION_AIM_ENABLED = true;
+    public static boolean VISION_AIM_ENABLED = false; // OFF until CAM_X_SIGN and the camera numbers are checked: a wrong sign fights the tracking
     public static double VISION_AIM_GAIN     = 0.7;  // 1 = trust the tag fully each loop
     public static double VISION_MAX_CORRECTION_DEG = 15.0; // never move more than this away from the pose-based aim
     public static int    CAM_X_SIGN          = -1;   // TODO flip to +1 if the turret turns the wrong way toward the tag

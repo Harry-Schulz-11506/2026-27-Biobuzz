@@ -56,7 +56,7 @@ public class AutoActions {
     private final Turret turret = new Turret();
     private final Shooter shooter = new Shooter();
     private final ShooterRegression regression;
-    private final DcMotorEx intake, transfer;
+    private final DcMotorEx intake, intake2;
     private final Servo flowerServo, stopServo;          // may be null if the robot no longer has them
     private final Servo pivotLeft, pivotRight;            // intake pivot (2 servos)
     private final Follower follower;
@@ -84,15 +84,15 @@ public class AutoActions {
         regression = new ShooterRegression(RobotConfig.REGRESSION_DEGREE);
 
         intake = hw.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_1);
-        transfer = hw.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_2);
+        intake2 = hw.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_2);
         intake.setDirection(RobotConfig.INTAKE_MOTOR_1_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        transfer.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        intake2.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        transfer.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        intake2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        transfer.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        intake2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         intake.setPower(0);
-        transfer.setPower(0);
+        intake2.setPower(0);
 
         // Servos hold their last position, so start them at their rest state: flower up, stop
         // blocking, since 0 is the open position.
@@ -166,7 +166,7 @@ public class AutoActions {
             if (!feedLatched && (!RobotConfig.GATE_FEED_ON_SPEED || shooter.atSpeed())) feedLatched = true;
             double power = feedLatched ? RobotConfig.INTAKE_POWER : 0;
             intake.setPower(power);
-            transfer.setPower(power); // both motors always get the same command
+            intake2.setPower(power); // both motors always get the same command
         }
     }
 
@@ -297,7 +297,7 @@ public class AutoActions {
         stopBlocking(); // shot over: stopper closed again
         feeding = false;
         feedLatched = false;
-        transfer.setPower(0);
+        intake2.setPower(0);
         intake.setPower(0);
     }
 
@@ -321,9 +321,9 @@ public class AutoActions {
     public void transferStop() { bothStop(); }
 
     // The stopper is open (RobotConfig.STOP_DOWN) only while shooting; it blocks the rest of the time, intaking included.
-    private void bothIn() { stopBlocking(); intake.setPower(RobotConfig.INTAKE_POWER); transfer.setPower(RobotConfig.INTAKE_POWER); }
-    private void bothOut() { intake.setPower(-RobotConfig.INTAKE_POWER); transfer.setPower(-RobotConfig.INTAKE_POWER); }
-    private void bothStop() { intake.setPower(0); transfer.setPower(0); stopBlocking(); }
+    private void bothIn() { stopBlocking(); intake.setPower(RobotConfig.INTAKE_POWER); intake2.setPower(RobotConfig.INTAKE_POWER); }
+    private void bothOut() { intake.setPower(-RobotConfig.INTAKE_POWER); intake2.setPower(-RobotConfig.INTAKE_POWER); }
+    private void bothStop() { intake.setPower(0); intake2.setPower(0); stopBlocking(); }
 
     // ===================== FLOWER / STOP SERVOS =====================
 
@@ -358,7 +358,7 @@ public class AutoActions {
         turret.setOpenLoopPower(0);
         spinDown();
         intake.setPower(0);
-        transfer.setPower(0);
+        intake2.setPower(0);
     }
 
     // ===================== ACCESS / DEBUG =====================

@@ -253,8 +253,10 @@ public class Turret extends OpMode {
             targetAngle = wrapToTurretRange(targetAngle + Range.clip(diff, -maxDiff, maxDiff));
         }
         double currentAngle = getTurretAngle();
-        // Shortest way round: a whole circle is allowed, so a raw difference can jump by 2 pi.
-        double error = Math.atan2(Math.sin(targetAngle - currentAngle), Math.cos(targetAngle - currentAngle));
+        // Direct difference, NOT the shortest way round: the travel is exactly -180..+180, so the turret may never
+        // cross the +-180 seam. targetAngle is already inside the range, so this always turns the long way
+        // when that is the only way, and never drives into a limit.
+        double error = targetAngle - currentAngle;
 
         if ((!trackingEnabled && !holdZero) || turret == null) {
             turretPower = 0.0;
@@ -288,6 +290,8 @@ public class Turret extends OpMode {
 
         if (Math.abs(error) < Math.toRadians(RobotConfig.TURRET_TOLERANCE_DEG)) {
             power = 0.0;
+        } else if (Math.abs(power) < RobotConfig.TURRET_MIN_POWER) {
+            power = Math.signum(power) * RobotConfig.TURRET_MIN_POWER; // small errors still get enough to move
         }
 
         if (power > 0) {
@@ -305,6 +309,11 @@ public class Turret extends OpMode {
                 power *= remaining / Math.toRadians(RobotConfig.TURRET_LIMIT_MARGIN_DEG);
             }
         }
+
+        // Already past a limit (overshoot, or the zero was off): drive back inside instead of just cutting power.
+        double minA = Math.toRadians(RobotConfig.TURRET_MIN_ANGLE_DEG), maxA = Math.toRadians(RobotConfig.TURRET_MAX_ANGLE_DEG);
+        if (currentAngle > maxA) power = -Math.min(RobotConfig.TURRET_MAX_POWER, Math.max(0.15, RobotConfig.TURRET_kP * (currentAngle - maxA)));
+        else if (currentAngle < minA) power = Math.min(RobotConfig.TURRET_MAX_POWER, Math.max(0.15, RobotConfig.TURRET_kP * (minA - currentAngle)));
 
         turretPower = power;
         turret.setPower(power);
