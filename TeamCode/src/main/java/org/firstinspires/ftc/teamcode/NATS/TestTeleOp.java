@@ -66,8 +66,8 @@ public class TestTeleOp extends OpMode {
         // The 2 intake motors are mounted mirrored, so the direction switches are opposite.
         intake = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_1);
         intake2 = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR_2);
-        intake.setDirection(DcMotorSimple.Direction.REVERSE);
-        intake2.setDirection(DcMotorSimple.Direction.FORWARD);
+        intake.setDirection(RobotConfig.INTAKE_MOTOR_1_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        intake2.setDirection(RobotConfig.INTAKE_MOTOR_2_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);

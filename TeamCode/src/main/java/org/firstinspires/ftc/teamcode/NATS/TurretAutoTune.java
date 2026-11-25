@@ -27,16 +27,18 @@ import java.util.List;
  *     push both ways without you having to guess).
  *  2. Relay test: RelayAutoTuner swings the turret around TURRET_TARGET_OFFSET_DEG until it has
  *     TURRET_CYCLES_TO_COLLECT clean cycles; Ku / Tu come out of it.
- *  3. Results: six candidates from ZieglerNicholsCalculator. Hold A to live-test one, D-pad up/down to
- *     pick another, B to write it into RobotConfig.TURRET_kP / _kI / _kD.
+  * 3. Results: six candidates from ZieglerNicholsCalculator. Hold A to live-test one, D-pad up/down to
+ *     pick another, B to record the tuned kI / kD and the encoder sign.
  *
  * Put the turret in the MIDDLE of its travel first: the test moves TURRET_TARGET_OFFSET_DEG one way
  * and oscillates around that point. TURRET_MAX_EXCURSION_DEG is a hard stop on how far it may move.
- * B aborts. Gains written with B are live only until the robot restarts: copy them into
- * RobotConfig.TURRET_kP / TURRET_kI / TURRET_kD to keep them.
+ * B aborts. Anything written with B is live only until the robot restarts.
  *
- * The relay tunes in encoder ticks (power per tick). On apply the gains are converted to the radians
- * Turret's own controller uses:  k_rad = k_ticks * TURRET_TICKS_PER_REV / (2 pi).
+ * The relay measures POWER PER TICK, which is a plain power loop. The tracking turret does not use one:
+ * it runs the hub's stock RUN_TO_POSITION cascade, where TURRET_STOCK_kP is a VELOCITY gain (ticks/s of
+ * speed goal per tick of error) and TURRET_VELOCITY_kF is the feedforward that makes it full speed. The
+ * two are different units, so this tuner only records its numbers: set TURRET_STOCK_kP and
+ * TURRET_VELOCITY_kF in the Dashboard (section 2) by watching the turret move.
  */
 @TeleOp(name = "AutoTune: Turret", group = "Tuning")
 public class TurretAutoTune extends LinearOpMode {
@@ -82,10 +84,6 @@ public class TurretAutoTune extends LinearOpMode {
 
     private double ticksPerDegree() {
         return RobotConfig.TURRET_TICKS_PER_REV / 360.0;
-    }
-
-    private double ticksPerRadian() {
-        return RobotConfig.TURRET_TICKS_PER_REV / (2.0 * Math.PI);
     }
 
     private double maxPower() {
@@ -240,13 +238,14 @@ public class TurretAutoTune extends LinearOpMode {
 
             boolean b = gamepad1.b;
             if (b && !previousB) {
-                double toRadians = ticksPerRadian();
-                RobotConfig.TURRET_kP = gains.kP * toRadians;
-                RobotConfig.TURRET_kI = gains.kI * toRadians;
-                RobotConfig.TURRET_kD = gains.kD * toRadians;
-                // Positive power must raise the angle Turret reports, or its P loop drives the wrong way.
+                // The relay measures power per tick; the stock RUN_TO_POSITION P is a velocity gain
+                // (ticks/s of speed goal per tick), so the kP cannot be copied across. Record the
+                // I / D candidates and the encoder sign; tune TURRET_STOCK_kP + TURRET_VELOCITY_kF by hand.
+                RobotConfig.TURRET_STOCK_kI = gains.kI;
+                RobotConfig.TURRET_STOCK_kD = gains.kD;
+                // Positive power must raise the angle Turret reports, or its target would be backwards.
                 RobotConfig.TURRET_ENCODER_SIGN = direction;
-                applied = gains.label;
+                applied = gains.label + " (recorded; set TURRET_STOCK_kP yourself)";
             }
             previousB = b;
 

@@ -33,9 +33,10 @@ public class RobotConfig {
     public static final String TURRET_MOTOR      = "turret";
     public static final String SHOOTER_MOTOR     = "shooter";
 
-    // Intake + transfer are driven by 2 motors that always run together at the same power.
-    public static final String INTAKE_MOTOR_1    = "intake";     // TODO name of the first intake/transfer motor
-    public static final String INTAKE_MOTOR_2    = "intake2";   // TODO name of the second intake/transfer motor
+    // The intake is driven by 2 motors, "intake" and "intake2". They are mounted mirrored (they spin
+    // opposite ways to move pollen the same way), so their direction switches differ - see section 3.
+    public static final String INTAKE_MOTOR_1    = "intake";
+    public static final String INTAKE_MOTOR_2    = "intake2";
 
     // The intake pivots on 2 servos that move together.
     public static final String PIVOT_SERVO_LEFT  = "pivotL";     // TODO
@@ -51,9 +52,15 @@ public class RobotConfig {
     // =====================================================================
     // ---- Drive (TeleOp) ----
     // There is one drive mode: full stick. The strafe/spin sign lives in Turret.loop().
+    /**
+     * Stick scale. 1.0 = full power, which is the maximum: Pedro normalises the four wheel powers to
+     * at most 1.0, so a full stick already commands 1.0 per motor and anything above 1.0 changes
+     * nothing. Lower it (0.3-0.6) for slow practice.
+     */
+    public static double DRIVE_POWER_SCALE = 1.0;
 
-    // ---- Intake / transfer (2 motors) ----
-    /** Both intake/transfer motors run at this power, always together (2 motors, one mechanism). */
+    // ---- Intake (2 mirrored motors) ----
+    /** Both intake motors run at this power, always together (2 motors, one mechanism). */
     public static double INTAKE_POWER   = 1.0;     // TODO
     public static double OUTTAKE_POWER  = -1.0;    // unjam (negative = reversed)
     public static double SHOOT_STOP_DELAY_SEC = 4.0;
@@ -62,24 +69,63 @@ public class RobotConfig {
     /** AutoActions gate: feed a shot only while the flywheel is at speed. */
     public static boolean GATE_FEED_ON_SPEED = true;
 
-    // ---- Turret ----
-    public static double TURRET_MAX_POWER = 0.8;
-    public static double TURRET_kP = 5.0;          // power per radian of error. Raised from 1.2 (too weak near the target); run TurretAutoTune for real values
-    /** Smallest power the turret is given while it is still outside the tolerance, to beat friction (0 = off). */
-    public static double TURRET_MIN_POWER = 0.05;
-    public static double TURRET_kI = 0.0;          // left at 0 unless TurretAutoTune says otherwise
-    public static double TURRET_kD = 0.0;
-    public static double TURRET_I_LIMIT_POWER = 0.25; // the integral term may never ask for more than this
-    /** +1 when positive power raises the encoder count; TurretAutoTune measures this and writes it back. */
-    public static int    TURRET_ENCODER_SIGN = -1;
+    // ---- Turret (position loop = the motor's own stock PID, RUN_TO_POSITION) ----
+    /** Top power the stock PID may use: 1.0 = full speed. Lower it if the turret slams or overshoots. */
+    public static double TURRET_MAX_POWER = 1.0;
+    /**
+     * THE stock position gain, in TICKS/S OF SPEED GOAL PER TICK OF ERROR. RUN_TO_POSITION does not use
+     * power directly: it turns the position error into a velocity goal, and the motor's velocity loop
+     * (below) chases that goal. One turret turn is 1198.75 ticks, so 1 deg is about 3.33 ticks.
+     * 15 = full speed for any error over about 55 deg; 5 = gentle; 40 = very aggressive.
+     */
+    public static double TURRET_STOCK_kP = 15.0;
+    /**
+     * The stock RUN_TO_POSITION only uses P, so these are kept as a record of what TurretAutoTune
+     * measured and are NOT sent to the motor (a non-zero I/D there is rejected by the hub firmware).
+     */
+    public static double TURRET_STOCK_kI = 0.0;
+    public static double TURRET_STOCK_kD = 0.0;
+    public static double TURRET_STOCK_kF = 0.0;
+
+    // ---- Turret speed: the hub's inner VELOCITY loop (RUN_TO_POSITION drives this one) ----
+    // Without these the position goal is generated but the velocity loop has nothing to push it with,
+    // so the turret crawls at a few percent of its speed. This is the part that makes it full speed.
+    /** Free speed at the motor shaft in ticks/s: (435 rpm / 60) * 383.6 ticks per rev = 2781. */
+    public static double TURRET_MAX_TICKS_PER_SEC = 2781;
+    /**
+     * Feedforward: full power (32767 in hub units) at full speed, measured at VOLTAGE_NOMINAL.
+     * 32767 / max ticks per second. VoltageComp raises it as the battery sags, so leave it at the
+     * value that is right on a fresh battery.
+     */
+    public static double TURRET_VELOCITY_kF = 32767.0 / TURRET_MAX_TICKS_PER_SEC;
+    public static double TURRET_VELOCITY_kP = 10.0;  // hub default; raise for a snappier hold
+    public static double TURRET_VELOCITY_kI = 0.0;   // 0 on purpose: no wind-up while the turret settles
+    public static double TURRET_VELOCITY_kD = 0.0;
+    /** +1 when positive power raises the angle Turret reports; TurretAutoTune measures this and writes it back. */
+    public static int    TURRET_ENCODER_SIGN = 1;
+    /** Within this many degrees of its target the turret counts as settled (telemetry). */
     public static double TURRET_TOLERANCE_DEG = 1.0;
     /** How close the auto's aim has to be before it counts as ready to shoot. */
     public static double TURRET_AIM_TOLERANCE_DEG = 2.0;
     // The turret turns 180 degrees each way from its zero (360 total), so 0 is the middle of travel.
     public static double TURRET_MIN_ANGLE_DEG = -180.0;
     public static double TURRET_MAX_ANGLE_DEG = 180.0;
-    public static double TURRET_LIMIT_MARGIN_DEG = 5.0;
     public static double TRIM_RATE_DEG_PER_SEC = 20.0;
+
+    // ---- Voltage compensation (robot-wide: drive + turret, see VoltageComp) ----
+    // A motor's speed comes from the voltage it actually gets, not from the power number you write: the
+    // same "1.0" is slower on a sagging battery. Power is scaled by NOMINAL / measured battery voltage,
+    // so the robot drives and the turret turns the same as the battery drains. The shooter has its own
+    // copy of these settings (SHOOTER_VOLTAGE_* in section 4).
+    public static boolean VOLTAGE_COMP_ENABLED = true;
+    /** The battery voltage everything was tuned at: no compensation at this reading. */
+    public static double VOLTAGE_NOMINAL = 12.0;
+    /** 0 = off, 1 = full compensation, above 1 = overcompensate (only if it still slows down when flat). */
+    public static double VOLTAGE_COMP_STRENGTH = 1.0;
+    public static double VOLTAGE_READ_SEC = 0.1;   // how often the battery is read (a read is slow)
+    public static double VOLTAGE_FILTER = 0.7;     // 0 = raw reading, closer to 1 = smoother
+    /** Readings below this are treated as this, so a bad sensor cannot command full power. */
+    public static double VOLTAGE_MIN = 7.0;
 
     // =====================================================================
     // 3. MOTOR DIRECTIONS  (flip these instead of rewiring or editing code)
@@ -96,30 +142,37 @@ public class RobotConfig {
      */
     public static boolean SHOOTER_ENCODER_REVERSED = true;
 
-    /** Turret motor power direction (the encoder side is TURRET_ENCODER_SIGN in section 2). */
+    /**
+     * Turret rotation direction. Flipping this is the whole fix for a turret that turns the wrong way:
+     * the hub reports the encoder in the motor's direction too, so the power and the angle reading flip
+     * together and the stock position PID stays consistent. Do NOT also flip TURRET_ENCODER_SIGN for a
+     * direction fix - that is only the sign of the angle reading, and the two would cancel out.
+     */
     public static boolean TURRET_MOTOR_REVERSED = true;
 
-    /** The 2 intake/transfer motors (they always run together at INTAKE_POWER). */
-    public static boolean INTAKE_MOTOR_1_REVERSED = false;   // intake  = Direction.FORWARD
-    public static boolean INTAKE_MOTOR_2_REVERSED = true;    // intake2 = Direction.REVERSE
+    /**
+     * The 2 intake motors. They are mounted mirrored, so they spin opposite ways and their switches are
+     * opposite: flipping one of these turns that motor around without touching the other.
+     */
+    public static boolean INTAKE_MOTOR_1_REVERSED = false;
+    public static boolean INTAKE_MOTOR_2_REVERSED = true;
 
     // =====================================================================
     // 4. SHOOTER  (flywheel velocity loop)
     // =====================================================================
     // ---- Speed ----
-    public static double SHOOTER_MIN_RPM = 0;
-    public static double SHOOTER_MAX_RPM = 10000;
-    public static double RPM_STEP = 100;          // gamepad 1 D-pad
-    public static double RPM_STEP_GAMEPAD2 = 50;  // gamepad 2 D-pad up / down
+    public static double SHOOTER_MIN_RPM = 1000;
+    public static double SHOOTER_MAX_RPM = 3300;
+    public static double RPM_STEP = 100;
     /** Fixed speed used when the auto-RPM table is switched off, and the starting point for tuning. */
     public static double SHOOTER_TARGET_RPM = 2000;
 
     // ---- Velocity PIDF (used by Shooter, written by ShooterAutoTune) ----
-    public static double SHOOTER_kP = 0.00279;   // power per RPM of error
-    public static double SHOOTER_kI = 0.0;
+    public static double SHOOTER_kP = 0.00279;    // power per RPM of error
+    public static double SHOOTER_kI = 0.00000;    // 0: P + D + feedforward hold the speed, no wind-up
     public static double SHOOTER_kD = 0.00024;
-    public static double SHOOTER_kV = 0.000177;   // power per RPM  (~1 / 3333 at 12 V)
-    public static double SHOOTER_kS = 0.06562;    // static offset power while target > 0
+    public static double SHOOTER_kV = 0.000344;   // power per RPM  (~1 / 3333 at 12 V)
+    public static double SHOOTER_kS = 0.12706;    // static offset power while target > 0
     public static double SHOOTER_I_LIMIT_POWER = 0.25;
     public static double SHOOTER_NOMINAL_VOLTAGE = 12.0;
 
@@ -165,7 +218,7 @@ public class RobotConfig {
     // =====================================================================
     // 5. TURRET GEARING (435 rpm goBILDA Yellow Jacket -> 24T pulley -> 75T pulley)
     // =====================================================================
-    public static final double TURRET_MOTOR_TICKS_PER_REV = 384.5;  // 435 rpm Yellow Jacket, 384.5 PPR at the output shaft
+    public static final double TURRET_MOTOR_TICKS_PER_REV = 383.6;  // 435 rpm Yellow Jacket, encoder at the output shaft (13.7:1 x 28)
     public static final double TURRET_DRIVE_TEETH = 24.0;           // pulley on the motor
     public static final double TURRET_DRIVEN_TEETH = 75.0;          // pulley on the turret
     public static final double TURRET_RATIO = TURRET_DRIVEN_TEETH / TURRET_DRIVE_TEETH;          // 3.125 : 1
@@ -308,10 +361,14 @@ public class RobotConfig {
      */
     public static double TIP_DROP_IN        = 6.0;
 
-    // ---- Turret fine aim from the tag ----
-    public static boolean VISION_AIM_ENABLED = false; // OFF until CAM_X_SIGN and the camera numbers are checked: a wrong sign fights the tracking
-    public static double VISION_AIM_GAIN     = 0.7;  // 1 = trust the tag fully each loop
-    public static double VISION_MAX_CORRECTION_DEG = 15.0; // never move more than this away from the pose-based aim
+    // ---- Turret fine aim from the tag (the offset is learned, not jumped, so it cannot fight the pose aim) ----
+    public static boolean VISION_AIM_ENABLED = true;
+    /** How fast the tag may walk the aim, in degrees of correction per second. */
+    public static double VISION_AIM_RATE_DEG_PER_SEC = 60.0;
+    /** A tag this close to the camera centre is "centred": no correction at all (stops chatter). */
+    public static double VISION_AIM_DEADBAND_DEG = 0.5;
+    /** The tag may never move the aim more than this away from the pose-based aim. */
+    public static double VISION_MAX_CORRECTION_DEG = 15.0;
     public static int    CAM_X_SIGN          = -1;   // TODO flip to +1 if the turret turns the wrong way toward the tag
 
     // =====================================================================
@@ -341,7 +398,7 @@ public class RobotConfig {
     public static double TUNE_SHOOTER_FF_SETTLE_S = 3.0;
     public static double TUNE_SHOOTER_FF_SAMPLE_S = 1.0;
     /** Safety cutoff: the tuner stops the flywheel above this speed. */
-    public static double TUNE_SHOOTER_ABORT_RPM = 10000;
+    public static double TUNE_SHOOTER_ABORT_RPM = 3400;
     /** false = PD-only candidates (kI stays 0), recommended for a flywheel. true = full PID family. */
     public static boolean TUNE_SHOOTER_TUNE_INTEGRAL = false;
     /** Candidate the live test starts on: 0 = most conservative ... 5 = most aggressive (4 = classic ZN). */

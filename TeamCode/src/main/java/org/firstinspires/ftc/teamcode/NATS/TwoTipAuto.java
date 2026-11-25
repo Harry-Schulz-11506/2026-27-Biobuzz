@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.NATS.Autos;
+package org.firstinspires.ftc.teamcode.NATS;
 
 import static com.pedropathing.api.Paths.*;
 
@@ -10,9 +10,6 @@ import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
-import org.firstinspires.ftc.teamcode.NATS.AutoActions;
-import org.firstinspires.ftc.teamcode.NATS.RobotConfig;
-import org.firstinspires.ftc.teamcode.NATS.TipDetector;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**
@@ -103,7 +100,7 @@ public class TwoTipAuto extends LinearOpMode {
         // ---- 3. Ball line, heading 180, intake running the whole way ----
         stage = "3. ball line (heading 180): intake";
         mech.pivotDown();
-        mech.intakeInWithTransfer();
+        mech.intakeInBoth();
         drive(pathIntake());
         settle(RobotConfig.AUTO_INTAKE_MS);
         mech.intakeStop();
@@ -233,7 +230,7 @@ public class TwoTipAuto extends LinearOpMode {
 
         stage = "5. flower " + n + ": drive in, intake";
         mech.flowerDown();
-        mech.intakeInWithTransfer();
+        mech.intakeInBoth();
         drive(hive1 ? pathIntoFlower1() : pathIntoFlower2());
         settle(RobotConfig.AUTO_FLOWER_INTAKE_MS);
         mech.intakeStop();

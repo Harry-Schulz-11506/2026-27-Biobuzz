@@ -13,7 +13,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 /**
  * Auto-side helpers for the NATS mechanisms: turret tracking, shooter spin-up + feed,
- * intake and transfer, and the flower / stop servos.
+ * the 2 intake motors, the turret, the shooter and the flower / stop servos.
  *
  * Nothing in here overrides TeleOp: it drives the same hardware through the same Turret,
  * Shooter and ShooterRegression classes, so the gains and the measured RPM/distance table
@@ -36,8 +36,8 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
  *   while (opModeIsActive()) {
  *       follower.update();
  *       mech.update();                                         // turret tracks + flywheel spins
- *       if (!follower.isBusy() &amp;&amp; mech.isReadyToShoot()) mech.shoot();
- *       if (mech.isFeeding() &amp;&amp; !mech.isShooterAtSpeed()) mech.stopShoot(); // jams, re-spin
+ *       if (!follower.isBusy() && mech.isReadyToShoot()) mech.shoot();
+ *       if (mech.isFeeding() && !mech.isShooterAtSpeed()) mech.stopShoot(); // jams, re-spin
  *   }
  * </pre>
  *
@@ -47,7 +47,6 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
  */
 @Config
 public class AutoActions {
-
 
     // ---- Flower / stop servo positions ----
     // Servo positions are 0.0 to 1.0; the minus in "0 up / -0.6 down" is the direction of travel.
@@ -118,16 +117,12 @@ public class AutoActions {
      * second Pedro Follower (and a second Pinpoint localizer on the same I2C device) inside the auto.
      */
     private void initTurret(HardwareMap hw) {
-        turret.turret = hw.get(DcMotorEx.class, RobotConfig.TURRET_MOTOR);
-        turret.turret.setDirection(RobotConfig.TURRET_MOTOR_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        turret.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        turret.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        turret.turret.setPower(0);
-        turret.zeroTicks = turret.turret.getCurrentPosition(); // turret 0 deg = straight ahead at init
-        PoseStorage.turretZeroTicks = (int) turret.zeroTicks;  // TeleOp keeps this zero, so the turret position carries over
+        VoltageComp.init(hw);                                  // battery reading for the turret's kF
+        turret.turret = TurretInitializer.initMotor(hw);
+        turret.zeroTicks = TurretInitializer.initZeroTicks(turret.turret, RobotConfig.USE_AUTO_END_POSE);
+        TurretInitializer.configureStockPid(turret.turret);
         turret.follower = follower;
-        turret.vision = new TipDetector(); // HuskyLens: fine aim + tip height
-        turret.vision.init(hw);
+        turret.vision = TurretInitializer.initVision(hw);
     }
 
     // ===================== LOOP =====================
@@ -139,6 +134,7 @@ public class AutoActions {
 
     /** Same as {@link #update()} but with a pose you already have. */
     public void update(Pose pose) {
+        VoltageComp.update(); // battery reading, so the turret's feedforward follows the battery
         if (regression.getRequestedDegree() != RobotConfig.REGRESSION_DEGREE) regression.refit(RobotConfig.REGRESSION_DEGREE);
         if (pose != null) PoseStorage.lastPose = pose; // TeleOp starts from where the auto left the robot
 
@@ -162,7 +158,7 @@ public class AutoActions {
 
         if (feeding) {
             // Wait for the flywheel to be at speed ONCE, then keep feeding until stopShoot(). Checking
-            // at speed every loop stopped the transfer each time a ball dragged the RPM out of the band.
+            // at speed every loop stopped the intake each time a ball dragged the RPM out of the band.
             if (!feedLatched && (!RobotConfig.GATE_FEED_ON_SPEED || shooter.atSpeed())) feedLatched = true;
             double power = feedLatched ? RobotConfig.INTAKE_POWER : 0;
             intake.setPower(power);
@@ -277,9 +273,9 @@ public class AutoActions {
         return isAimed() && isShooterAtSpeed();
     }
 
-    // ===================== FEED (transfer) =====================
+    // ===================== FEED (both intake motors) =====================
 
-    /** Start feeding. With RobotConfig.GATE_FEED_ON_SPEED on, the transfer only runs once the flywheel is at speed. */
+    /** Start feeding. With RobotConfig.GATE_FEED_ON_SPEED on, both intake motors only run once the flywheel is at speed. */
     public void shoot() {
         stopDown(); // stopper open so the pollen can reach the flywheel
         feeding = true;
@@ -305,20 +301,16 @@ public class AutoActions {
 
     private boolean feedLatched = false; // true once the flywheel was at speed for this shot
 
-    // ===================== INTAKE / TRANSFER (raw) =====================
+    // ===================== INTAKE (raw, both motors) =====================
 
-    // The intake and the transfer always spin together: every one of these moves both motors.
+    // The 2 intake motors ("intake", "intake2") always spin together: every one of these moves both.
 
     public void intakeIn() { bothIn(); }
     public void intakeOut() { bothOut(); }
     public void intakeStop() { bothStop(); }
 
-    /** Intake in and transfer in together, the way drive practice picks up pollen. */
-    public void intakeInWithTransfer() { bothIn(); }
-
-    public void transferIn() { bothIn(); }
-    public void transferOut() { bothOut(); }
-    public void transferStop() { bothStop(); }
+    /** Both intake motors in, the way drive practice picks up pollen. */
+    public void intakeInBoth() { bothIn(); }
 
     // The stopper is open (RobotConfig.STOP_DOWN) only while shooting; it blocks the rest of the time, intaking included.
     private void bothIn() { stopBlocking(); intake.setPower(RobotConfig.INTAKE_POWER); intake2.setPower(RobotConfig.INTAKE_POWER); }
@@ -352,7 +344,7 @@ public class AutoActions {
 
     // ===================== TEARDOWN =====================
 
-    /** Turret off, flywheel off, intake and transfer off. Call at the end of auto (TeleOp init resets too). */
+    /** Turret off, flywheel off, both intake motors off. Call at the end of auto (TeleOp init resets too). */
     public void stopAll() {
         tracking = false;
         turret.setOpenLoopPower(0);

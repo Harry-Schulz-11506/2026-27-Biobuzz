@@ -40,7 +40,7 @@ Imports:
 
 
 -------------------------------------------------------------------
-3. INTAKE WHILE DRIVING (pivot down, intake + transfer on, both off at the end)
+3. INTAKE WHILE DRIVING (pivot down, both intake motors on, both off at the end)
 -------------------------------------------------------------------
     intakePath(path)
 
@@ -50,7 +50,7 @@ Imports:
                         drive(path),
                         instant(() -> {
                             mech.pivotDown();
-                            mech.intakeInWithTransfer();
+                            mech.intakeInBoth();
                         })
                 ),
                 instant(() -> {
